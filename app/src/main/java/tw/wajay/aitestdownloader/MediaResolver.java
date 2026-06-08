@@ -61,7 +61,7 @@ final class MediaResolver {
             "(?:var\\s+)?(player_data|player_aaaa|player)\\s*=\\s*\\{",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern SITE_PLAY_LINK = Pattern.compile(
-            "<a([^>]+)href=[\"']([^\"']*(?:/(?:vod)?play/|/watch/|/video/|/videos/|/embed/|/amateurjav_content/|/eps/|/episode/|/vod/detail/|/detail/|/index\\.php/vod/(?:play|detail)/|/dianying/|/dianshiju/|/zongyi/|/dongman/)[^\"']+)[\"']([^>]*)>(.*?)</a>",
+            "<a([^>]+)href=[\"']([^\"']*(?:/(?:vod)?play/|/vodplay/|/watch/|/video/|/videos/|/embed/|/amateurjav_content/|/eps/|/episode/|/vod/detail/|/voddetail/|/voddetail2/|/detail/|/title/|/index\\.php/vod/(?:play|detail)/|/dianying/|/dianshiju/|/zongyi/|/dongman/)[^\"']+)[\"']([^>]*)>(.*?)</a>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern ANI_GAMER_EPISODE_LINK = Pattern.compile(
             "<a[^>]+href=[\"']([^\"']*(?:animeVideo\\.php\\?sn=\\d+|\\?sn=\\d+)[^\"']*)[\"'][^>]*>",
@@ -460,9 +460,100 @@ final class MediaResolver {
     private static List<String> labelList(List<String> candidates, Map<String, String> labels) {
         List<String> out = new ArrayList<>();
         for (String candidate : candidates) {
-            out.add(labels.containsKey(candidate) ? labels.get(candidate) : "");
+            out.add(enrichedLabel(candidate, labels.containsKey(candidate) ? labels.get(candidate) : ""));
         }
         return out;
+    }
+
+    private static String enrichedLabel(String url, String resolverLabel) {
+        StringBuilder builder = new StringBuilder();
+        appendLabelPart(builder, cleanLabel(resolverLabel));
+        appendLabelPart(builder, mediaKindLabel(url));
+        appendLabelPart(builder, qualityLabel(url));
+        appendLabelPart(builder, episodeLabel(url));
+        appendLabelPart(builder, sourceHostLabel(url));
+        String label = builder.toString();
+        return label.length() > 72 ? label.substring(0, 72) : label;
+    }
+
+    private static void appendLabelPart(StringBuilder builder, String value) {
+        String cleaned = cleanLabel(value);
+        if (cleaned.isEmpty()) {
+            return;
+        }
+        String lower = builder.toString().toLowerCase(Locale.US);
+        if (lower.contains(cleaned.toLowerCase(Locale.US))) {
+            return;
+        }
+        if (builder.length() > 0) {
+            builder.append(' ');
+        }
+        builder.append(cleaned);
+    }
+
+    private static String mediaKindLabel(String url) {
+        String lowered = url == null ? "" : url.toLowerCase(Locale.US);
+        if (lowered.contains(".m3u8")) return "HLS";
+        if (lowered.contains(".mpd")) return "DASH";
+        if (lowered.contains(".mp4")) return "MP4";
+        if (lowered.contains(".webm")) return "WEBM";
+        if (lowered.contains(".m4v")) return "M4V";
+        if (lowered.contains("/player") || lowered.contains("/parse") || lowered.contains("/vodplay/")) return "PLAYER";
+        return "";
+    }
+
+    private static String qualityLabel(String url) {
+        String lowered = url == null ? "" : url.toLowerCase(Locale.US);
+        Matcher pMatcher = Pattern.compile("(?<!\\d)(2160|1440|1080|720|480|360)p?(?!\\d)").matcher(lowered);
+        if (pMatcher.find()) {
+            return pMatcher.group(1) + "p";
+        }
+        Matcher sizeMatcher = Pattern.compile("(?<!\\d)(3840x2160|2560x1440|1920x1080|1280x720|854x480|640x360)(?!\\d)").matcher(lowered);
+        if (!sizeMatcher.find()) {
+            return "";
+        }
+        String size = sizeMatcher.group(1);
+        if (size.endsWith("2160")) return "2160p";
+        if (size.endsWith("1440")) return "1440p";
+        if (size.endsWith("1080")) return "1080p";
+        if (size.endsWith("720")) return "720p";
+        if (size.endsWith("480")) return "480p";
+        if (size.endsWith("360")) return "360p";
+        return "";
+    }
+
+    private static String episodeLabel(String url) {
+        String lowered = url == null ? "" : url.toLowerCase(Locale.US);
+        Matcher epMatcher = Pattern.compile("(?:/|[-_])ep(?:isode)?[-_ ]?(\\d+)(?:\\D|$)").matcher(lowered);
+        if (epMatcher.find()) {
+            return "EP" + epMatcher.group(1);
+        }
+        Matcher playMatcher = Pattern.compile("/(?:vod)?play/(?:id/)?\\d+/(?:sid/)?\\d+/(?:nid/)?(\\d+)").matcher(lowered);
+        if (playMatcher.find()) {
+            return "EP" + playMatcher.group(1);
+        }
+        Matcher htmlMatcher = Pattern.compile("/(?:play/)?\\d+/(?:\\d+[-_])?(\\d+)\\.html").matcher(lowered);
+        return htmlMatcher.find() ? "EP" + htmlMatcher.group(1) : "";
+    }
+
+    private static String sourceHostLabel(String url) {
+        String lowered = url == null ? "" : url.toLowerCase(Locale.US);
+        String[][] markers = new String[][]{
+                {"xluuss", "XLU"}, {"lzcdn", "LZ"}, {"hhuus", "HH"},
+                {"qsstvw", "QSS"}, {"gsuus", "GS"}, {"bfllvip", "BFL"},
+                {"ppqrrs", "PPQ"}, {"qqqrst", "QQQ"}, {"vodcnd", "VODCND"},
+                {"phimgood", "PHIM"}, {"ryiplay", "RYI"}, {"huyall", "HUYA"},
+                {"ijycnd", "IJY"}, {"jisuzyv", "JISU"}, {"taopianplay1", "TAOPIAN"},
+                {"dmcdn.net", "DMCDN"}, {"googlevideo", "GoogleVideo"},
+                {"bilivideo", "BiliVideo"}, {"cdninstagram", "InstagramCDN"},
+                {"fbcdn", "FacebookCDN"}, {"video.twimg.com", "TwitterVideo"}
+        };
+        for (String[] marker : markers) {
+            if (lowered.contains(marker[0])) {
+                return marker[1];
+            }
+        }
+        return "";
     }
 
     private static void putLabel(Map<String, String> labels, String url, String label) {
@@ -607,7 +698,10 @@ final class MediaResolver {
                 || lowered.contains("/eps/")
                 || lowered.contains("/episode/")
                 || lowered.contains("/vod/detail/")
+                || lowered.contains("/voddetail/")
+                || lowered.contains("/voddetail2/")
                 || lowered.contains("/detail/")
+                || lowered.contains("/title/")
                 || lowered.contains("/index.php/vod/play/")
                 || lowered.contains("/index.php/vod/detail/")
                 || lowered.contains("/dianying/")
@@ -717,8 +811,11 @@ final class MediaResolver {
                 score -= 120;
             }
             if (lowered.contains("/vod/detail/")
+                    || lowered.contains("/voddetail/")
+                    || lowered.contains("/voddetail2/")
                     || lowered.contains("/index.php/vod/detail/")
                     || lowered.contains("/detail/")
+                    || lowered.contains("/title/")
                     || lowered.contains("/dianying/")
                     || lowered.contains("/dianshiju/")
                     || lowered.contains("/zongyi/")

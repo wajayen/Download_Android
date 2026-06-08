@@ -80,6 +80,7 @@ public final class MainActivity extends Activity {
         setContentView(createContentView());
         hydrateSharedText(getIntent());
         requestNotificationPermission();
+        requestLegacyStoragePermission();
         refreshStatus();
     }
 
@@ -310,7 +311,17 @@ public final class MainActivity extends Activity {
         BrowserRequestContext requestContext = parseBrowserRequestContext(urlInput.getText().toString());
         List<String> urls = requestContext.urls;
         if (urls.isEmpty()) {
-            Toast.makeText(this, getString(R.string.toast_enter_url), Toast.LENGTH_SHORT).show();
+            String query = urlInput.getText().toString().trim();
+            if (!VideoSearchResolver.looksLikeSearchText(query)) {
+                Toast.makeText(this, getString(R.string.toast_enter_url_or_search), Toast.LENGTH_SHORT).show();
+                return;
+            }
+            String fileName = FileNames.sanitize(fileNameInput.getText().toString());
+            if (fileName.isEmpty()) {
+                fileName = FileNames.sanitize(query) + ".mp4";
+            }
+            startDownloaderService(DownloadService.startIntent(this, VideoSearchResolver.searchUri(query), fileName, "", "", "{}"));
+            statusText.setText(getString(R.string.status_search_queued, query));
             return;
         }
 
@@ -594,6 +605,14 @@ public final class MainActivity extends Activity {
     private void requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1001);
+        }
+    }
+
+    private void requestLegacyStoragePermission() {
+        if (Build.VERSION.SDK_INT >= 23
+                && Build.VERSION.SDK_INT < 29
+                && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1002);
         }
     }
 }

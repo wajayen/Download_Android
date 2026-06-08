@@ -12,6 +12,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Locale;
@@ -27,7 +28,7 @@ final class OutputExporter {
             throw new IOException("Output file missing");
         }
         if (Build.VERSION.SDK_INT < 29) {
-            return source.getAbsolutePath();
+            return exportToLegacyPublicDownloads(source).getAbsolutePath();
         }
 
         ContentResolver resolver = context.getApplicationContext().getContentResolver();
@@ -67,6 +68,53 @@ final class OutputExporter {
         }
 
         return uri.toString();
+    }
+
+    private static File exportToLegacyPublicDownloads(File source) throws IOException {
+        File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        File targetDir = new File(downloads, PUBLIC_SUBDIR);
+        if (!targetDir.exists() && !targetDir.mkdirs()) {
+            throw new IOException("Could not create public Downloads directory");
+        }
+        File target = uniqueTarget(targetDir, source.getName());
+        copyFile(source, target);
+        return target;
+    }
+
+    private static File uniqueTarget(File directory, String fileName) {
+        String safeName = (fileName == null || fileName.trim().isEmpty()) ? "download.bin" : fileName.trim();
+        File target = new File(directory, safeName);
+        if (!target.exists()) {
+            return target;
+        }
+        int dot = safeName.lastIndexOf('.');
+        String stem = dot > 0 ? safeName.substring(0, dot) : safeName;
+        String extension = dot > 0 ? safeName.substring(dot) : "";
+        for (int i = 2; i < 1000; i++) {
+            target = new File(directory, stem + " (" + i + ")" + extension);
+            if (!target.exists()) {
+                return target;
+            }
+        }
+        return new File(directory, stem + " (" + System.currentTimeMillis() + ")" + extension);
+    }
+
+    private static void copyFile(File source, File target) throws IOException {
+        boolean success = false;
+        try (BufferedInputStream input = new BufferedInputStream(new FileInputStream(source));
+             BufferedOutputStream output = new BufferedOutputStream(new FileOutputStream(target))) {
+            byte[] buffer = new byte[128 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+            output.flush();
+            success = true;
+        } finally {
+            if (!success && target.exists()) {
+                target.delete();
+            }
+        }
     }
 
     private static String mimeType(String fileName) {

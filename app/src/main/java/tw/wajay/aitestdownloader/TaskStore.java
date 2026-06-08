@@ -385,8 +385,9 @@ final class TaskStore {
                 R.string.task_summary_resolved,
                 task.optString("sourceSite", "generic"),
                 task.optInt("candidateCount", 1)));
-        builder.append('\n').append(resolvedUrl);
         JSONArray candidateUrls = task.optJSONArray("candidateUrls");
+        JSONArray candidateLabels = task.optJSONArray("candidateLabels");
+        builder.append('\n').append(resolvedPreview(task, resolvedUrl, candidateUrls, candidateLabels));
         if (candidateUrls == null || candidateUrls.length() <= 1) {
             return;
         }
@@ -394,12 +395,42 @@ final class TaskStore {
         for (int c = 0; c < preview; c++) {
             String candidate = candidateUrls.optString(c, "");
             if (!candidate.isEmpty()) {
-                builder.append('\n').append(text(R.string.task_summary_candidate, c + 1, candidate));
+                builder.append('\n').append(text(R.string.task_summary_candidate, c + 1, candidatePreview(task, candidate, candidateLabels, c)));
             }
         }
         if (candidateUrls.length() > preview) {
             builder.append('\n').append(text(R.string.task_summary_candidate_more, candidateUrls.length() - preview));
         }
+    }
+
+    private String resolvedPreview(JSONObject task, String resolvedUrl, JSONArray candidateUrls, JSONArray candidateLabels) {
+        if (candidateUrls != null) {
+            for (int i = 0; i < candidateUrls.length(); i++) {
+                if (resolvedUrl.equals(candidateUrls.optString(i, ""))) {
+                    return candidatePreview(task, resolvedUrl, candidateLabels, i);
+                }
+            }
+        }
+        return readableCandidate(task.optString("sourceSite", ""), resolvedUrl, "");
+    }
+
+    private String candidatePreview(JSONObject task, String url, JSONArray candidateLabels, int index) {
+        String resolverLabel = candidateLabels == null ? "" : candidateLabels.optString(index, "");
+        return readableCandidate(task.optString("sourceSite", ""), url, resolverLabel);
+    }
+
+    private String readableCandidate(String sourceSite, String url, String resolverLabel) {
+        StringBuilder builder = new StringBuilder();
+        String tags = candidateTags(sourceSite, url);
+        if (!tags.isEmpty()) {
+            builder.append('[').append(tags).append("] ");
+        }
+        String label = compactLabel(resolverLabel);
+        if (!label.isEmpty()) {
+            builder.append(label).append(" - ");
+        }
+        builder.append(shortUrl(url));
+        return builder.toString();
     }
 
     private JSONArray candidateArray(List<String> candidates) {

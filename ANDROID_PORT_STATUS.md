@@ -27,6 +27,13 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Android input accepts pasted browser request context: `Cookie:` and `Referer:` headers are parsed, persisted, and applied to queued downloads.
 - Android input accepts additional safe pasted request headers such as `User-Agent`, `Accept`, `Accept-Language`, `Authorization`, and fetch metadata headers.
 - Android input supports browser `Copy as cURL` text and avoids queuing URLs found only inside pasted header values such as Referer.
+- Android input now accepts video titles and JAV-style codes as search queries, searches supported video sites in the background, and queues the first resolvable result for download.
+- Android video search now seeds supported site-search URLs before falling back to search-engine results, improving reliability for MovieFFM, Gimy/Xiaoya/MacCMS-like sites, and common JAV site clusters.
+- Android video search detects JAV-style codes and prioritizes JAV direct-code URLs plus JAV site-search candidates before general video sites.
+- Android resolver now recognizes more MacCMS-like search result paths such as `/voddetail/`, `/voddetail2/`, and `/title/`, plus additional Ikanbot/YFSP/Olevod/777TV search entry points.
+- Android video search now fetches the first supported site-search pages, extracts ranked detail/play-page links, and keeps the search page itself as a fallback candidate.
+- Android video search now preserves each extracted result's search-page Referer while resolving and downloading, improving compatibility with sites that validate navigation origin.
+- Android video search now keeps alternate search results in the resolved source candidate list after one result succeeds, so the UI can retry a different search result instead of only the current page's media sources.
 - Parser registry foundation through `MediaResolver`.
 - First site-aware candidate extraction and ordering for MovieFFM, Gimy, and XiaoyaKankan style pages.
 - Recursive player/iframe/API page resolution up to four levels deep.
@@ -40,9 +47,12 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Source picker labels infer episode numbers and friendly names for common CDN/player hosts used by MovieFFM, Gimy, XiaoyaKankan, AniGamer, Anime1, and MacCMS-like sites.
 - Resolver candidate metadata now preserves extraction-time labels from anchor text, player object fields, iframe/player context, Anime1, and AniGamer signals.
 - Resolver candidate labels now prefer anchor `title`, `aria-label`, and common `data-*` source fields, and combine player object source/server/quality/name fields.
+- Resolver candidate labels now infer media type, quality, episode number, and known CDN/source hints even when the page does not provide a readable label.
+- Download queue summaries now preview resolved sources with readable candidate labels and short URLs instead of raw long URLs only.
 - Alternate direct media candidates are retried automatically when the selected source fails.
 - HTTP `.part` resume files are guarded by URL state so alternate sources do not corrupt partial downloads.
 - Android 10+ MediaStore export copies completed files into public Downloads/AI Test Downloader.
+- Android 6-9 legacy storage export copies completed files and exported logs into public Downloads/AI Test Downloader after requesting write permission.
 - MacCMS-style `player_data`, `player_aaaa`, and `player` JavaScript object parsing.
 - MacCMS `encrypt=1` URL decode and `encrypt=2` base64 URL decode for player URLs.
 - Player source arrays and common MovieFFM/Gimy/Xiaoya episode/play-page links are extracted as resolver candidates.
@@ -69,6 +79,7 @@ This Android app is a native port track for the desktop downloader in `downloade
 - HLS media segment `#EXT-X-BYTERANGE` handling for byte-range based playlists and single-file segment layouts.
 - HLS byte-range segment parsing now preserves implicit offsets when `#EXT-X-BYTERANGE` omits `@offset`, matching the playlist sequence rules.
 - HLS discontinuity markers flush the current output before continuing.
+- HLS downloads now attempt an Android-native MediaExtractor/MediaMuxer remux from the merged transport stream into MP4, falling back to the TS output when remux is unsupported.
 - Basic DASH `.mpd` support for single-representation fragmented MP4 streams using `SegmentTemplate` or `SegmentList`.
 - DASH `SegmentBase` support for single-file MP4 representations with `Initialization` byte ranges.
 - DASH representation selection now reads representation or adaptation `width`, `height`, and `codecs`, preferring higher resolution before bandwidth and reporting the selected representation details.
@@ -81,12 +92,11 @@ This Android app is a native port track for the desktop downloader in `downloade
 - yt-dlp integration and plugin support.
 - ffmpeg/ffprobe based remux, transcode, duration validation, multi-track DASH audio/video muxing, and fallback routing.
 - Full browser session reuse and impersonation behavior equivalent to `curl_cffi` and desktop browser workflows; pasted Cookie/Referer plus selected request headers, basic Referer/Origin propagation, and persistent app cookie storage are already ported.
-- Search workflows and alternate-site fallback prompts.
-- Pre-Android 10 public Downloads export; current fallback output is app-specific external Downloads on older devices.
+- Alternate-site fallback prompts and full desktop search result review UI.
 
 ## Next Porting Order
 
-1. FFmpegKit or equivalent media remux path for HLS/DASH to normalized MP4.
+1. Extend the Android-native remux path and evaluate FFmpegKit or equivalent fallback for formats MediaMuxer cannot handle.
 2. Add structured per-site episode/source metadata for major individual sites.
 3. Port additional site parsers in clusters, starting with JAV/adult sites.
 4. Search and alternate-site fallback.

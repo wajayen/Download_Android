@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">下载者</string>
     <string name="build_ready">粘贴视频地址、浏览器请求头，或受保护页面的 Copy as cURL 文本。</string>
-    <string name="hint_url">curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...&#10;User-Agent: Mozilla/5.0 ...</string>
+    <string name="hint_url">网址、影片名称、番号，或 Copy as cURL 文本&#10;curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...</string>
     <string name="hint_file_name">文件名（可选）</string>
     <string name="action_download">下载</string>
     <string name="action_open_menu">打开菜单</string>
@@ -25,6 +25,7 @@
     <string name="status_idle">当前没有下载队列</string>
     <string name="status_cancelling">正在取消...</string>
     <string name="toast_enter_url">请输入至少一个 HTTP 或 HTTPS 地址</string>
+    <string name="toast_enter_url_or_search">请输入网址、影片名称或番号</string>
     <string name="toast_no_retry_task">没有可重试的失败或已取消项目</string>
     <string name="toast_no_alternate_source">没有可用的备用来源</string>
     <string name="toast_no_source_candidate">没有可用的来源候选</string>
@@ -34,6 +35,7 @@
     <string name="toast_logs_exported">日志已导出</string>
     <string name="toast_log_export_failed">日志导出失败</string>
     <string name="status_download_queued">已加入下载队列\n%1$s</string>
+    <string name="status_search_queued">已加入搜索队列\n%1$s</string>
     <string name="status_queued_downloads">已加入 %1$d 个下载</string>
     <string name="status_retry_queued">已加入重试队列\n%1$s</string>
     <string name="status_alternate_source_queued">已加入备用来源\n%1$s\n%2$s</string>
@@ -78,6 +80,9 @@
     <string name="engine_retrying_alternate_source">正在重试备用来源 %1$d/%2$d</string>
     <string name="engine_resolving_dash">正在解析 DASH manifest</string>
     <string name="engine_resolving_hls">正在解析 HLS manifest</string>
+    <string name="engine_searching_video">正在搜索影片：%1$s</string>
+    <string name="engine_search_try_result">正在尝试搜索结果 %1$d/%2$d：%3$s</string>
+    <string name="engine_search_result_failed">搜索结果失败，尝试下一个：%1$s</string>
     <string name="engine_starting_http">开始 HTTP 下载</string>
     <string name="engine_source_failed_switching">来源失败，正在切换：%1$s</string>
     <string name="engine_cancelled_keep_partial">已取消；保留部分文件</string>
@@ -87,10 +92,19 @@
     <string name="engine_dash_representation">DASH 表示 %1$s</string>
     <string name="engine_downloading_dash_segment">正在下载 DASH 分片 %1$d / %2$d</string>
     <string name="engine_hls_variant">已选择 HLS 版本 %1$s</string>
+    <string name="engine_remuxing_mp4">正在重新封装为 MP4</string>
+    <string name="engine_remuxed_mp4">已重新封装为 MP4</string>
+    <string name="engine_remuxed_mp4_keep_source">已重新封装为 MP4；保留原始传输文件</string>
+    <string name="engine_remux_mp4_failed_keep_ts">MP4 重新封装失败；保留 TS 输出：%1$s</string>
     <string name="error_no_media_candidate">此页面找不到可播放的 mp4/m3u8 媒体地址</string>
     <string name="error_resolve_depth_exceeded">已跟随多层播放页，仍无法解析可播放的媒体地址</string>
     <string name="error_unsupported_hls_key_method">不支持的 HLS key 方法：%1$s</string>
     <string name="error_missing_hls_key_uri">HLS AES-128 key 缺少 URI</string>
     <string name="error_invalid_hls_key_length">HLS AES-128 key 长度不正确：%1$d</string>
     <string name="error_hls_decrypt_failed">HLS 分片解密失败</string>
+    <string name="error_search_no_results">找不到可下载的搜索结果：%1$s</string>
+    <string name="search_candidate_selected">选取的搜索结果：%1$s</string>
+    <string name="search_candidate_media_fallback">已解析的媒体备用来源</string>
+    <string name="search_candidate_alternate">其他搜索结果：%1$s</string>
+    <string name="search_candidate_previous">先前搜索结果：%1$s</string>
 </resources>

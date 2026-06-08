@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">ダウンローダー</string>
     <string name="build_ready">動画 URL、ブラウザーのリクエストヘッダー、または保護ページの Copy as cURL テキストを貼り付けてください。</string>
-    <string name="hint_url">curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...&#10;User-Agent: Mozilla/5.0 ...</string>
+    <string name="hint_url">URL、動画名、品番、または Copy as cURL テキスト&#10;curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...</string>
     <string name="hint_file_name">ファイル名（任意）</string>
     <string name="action_download">ダウンロード</string>
     <string name="action_open_menu">メニューを開く</string>
@@ -25,6 +25,7 @@
     <string name="status_idle">ダウンロード待ちはありません</string>
     <string name="status_cancelling">キャンセル中...</string>
     <string name="toast_enter_url">HTTP または HTTPS の URL を1つ以上入力してください</string>
+    <string name="toast_enter_url_or_search">URL、動画名、または品番を入力してください</string>
     <string name="toast_no_retry_task">再試行できる失敗またはキャンセル済み項目はありません</string>
     <string name="toast_no_alternate_source">利用可能な代替ソースはありません</string>
     <string name="toast_no_source_candidate">利用可能なソース候補はありません</string>
@@ -34,6 +35,7 @@
     <string name="toast_logs_exported">ログを書き出しました</string>
     <string name="toast_log_export_failed">ログの書き出しに失敗しました</string>
     <string name="status_download_queued">ダウンロード待ちに追加しました\n%1$s</string>
+    <string name="status_search_queued">検索をキューに追加しました\n%1$s</string>
     <string name="status_queued_downloads">%1$d 件のダウンロードを追加しました</string>
     <string name="status_retry_queued">再試行待ちに追加しました\n%1$s</string>
     <string name="status_alternate_source_queued">代替ソースを追加しました\n%1$s\n%2$s</string>
@@ -78,6 +80,9 @@
     <string name="engine_retrying_alternate_source">代替ソースを再試行中 %1$d/%2$d</string>
     <string name="engine_resolving_dash">DASH manifest を解析中</string>
     <string name="engine_resolving_hls">HLS manifest を解析中</string>
+    <string name="engine_searching_video">動画を検索中：%1$s</string>
+    <string name="engine_search_try_result">検索結果を試行中 %1$d/%2$d：%3$s</string>
+    <string name="engine_search_result_failed">検索結果が失敗しました。次を試します：%1$s</string>
     <string name="engine_starting_http">HTTP ダウンロードを開始しています</string>
     <string name="engine_source_failed_switching">ソースに失敗しました。切り替え中：%1$s</string>
     <string name="engine_cancelled_keep_partial">キャンセルしました。部分ファイルを保持します</string>
@@ -87,10 +92,19 @@
     <string name="engine_dash_representation">DASH 表現 %1$s</string>
     <string name="engine_downloading_dash_segment">DASH セグメントをダウンロード中 %1$d / %2$d</string>
     <string name="engine_hls_variant">HLS バリアントを選択しました %1$s</string>
+    <string name="engine_remuxing_mp4">MP4 に再多重化中</string>
+    <string name="engine_remuxed_mp4">MP4 に再多重化しました</string>
+    <string name="engine_remuxed_mp4_keep_source">MP4 に再多重化しました。元の転送ファイルも保持しました</string>
+    <string name="engine_remux_mp4_failed_keep_ts">MP4 再多重化に失敗しました。TS 出力を保持します：%1$s</string>
     <string name="error_no_media_candidate">このページで再生可能な mp4/m3u8 メディア URL が見つかりません</string>
     <string name="error_resolve_depth_exceeded">複数のプレイヤーページをたどりましたが、再生可能なメディア URL を解析できませんでした</string>
     <string name="error_unsupported_hls_key_method">未対応の HLS key 方式：%1$s</string>
     <string name="error_missing_hls_key_uri">HLS AES-128 key の URI がありません</string>
     <string name="error_invalid_hls_key_length">HLS AES-128 key の長さが不正です：%1$d</string>
     <string name="error_hls_decrypt_failed">HLS セグメントの復号に失敗しました</string>
+    <string name="error_search_no_results">ダウンロード可能な検索結果が見つかりません：%1$s</string>
+    <string name="search_candidate_selected">選択した検索結果：%1$s</string>
+    <string name="search_candidate_media_fallback">解析済みメディアの予備候補</string>
+    <string name="search_candidate_alternate">ほかの検索結果：%1$s</string>
+    <string name="search_candidate_previous">以前の検索結果：%1$s</string>
 </resources>

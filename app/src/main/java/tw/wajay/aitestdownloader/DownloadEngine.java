@@ -446,6 +446,10 @@ final class DownloadEngine {
             try {
                 importCookieHeader(rawUrl, cookieHeader);
                 importRequestHeaders(headersJson);
+                if (VideoSearchResolver.isSearchUri(rawUrl)) {
+                    downloadSearchResult(rawUrl, requestedName, callback);
+                    return;
+                }
                 Uri uri = Uri.parse(rawUrl);
                 String fileName = FileNames.choose(uri, requestedName);
                 String targetUrl = rawUrl;
@@ -467,6 +471,112 @@ final class DownloadEngine {
                 callback.onError(error);
             }
         });
+    }
+
+    private void downloadSearchResult(String rawUrl, String requestedName, Callback callback) throws IOException {
+        String query = VideoSearchResolver.queryFromUri(rawUrl);
+        callback.onStatus(context.getString(R.string.engine_searching_video, query));
+        List<VideoSearchResolver.Result> results = VideoSearchResolver.search(query);
+        if (results.isEmpty()) {
+            throw new IOException(context.getString(R.string.error_search_no_results, query));
+        }
+        List<String> urls = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
+        for (VideoSearchResolver.Result result : results) {
+            urls.add(result.url);
+            labels.add(result.title);
+        }
+        callback.onResolved("search", results.get(0).url, urls, labels);
+
+        IOException lastError = null;
+        for (int i = 0; i < results.size(); i++) {
+            VideoSearchResolver.Result result = results.get(i);
+            if (cancelled.get()) {
+                callback.onStatus(context.getString(R.string.engine_cancelled_keep_partial));
+                return;
+            }
+            try {
+                callback.onStatus(context.getString(R.string.engine_search_try_result, i + 1, results.size(), result.sourceSite));
+                String sourceSite = MediaResolver.sourceSite(result.url);
+                String targetUrl = result.url;
+                List<String> fallbackUrls = new ArrayList<>();
+                String refererUrl = result.refererUrl;
+                if (!isMediaUrl(result.url)) {
+                    ResolvedTarget resolvedTarget = resolvePageToMedia(result.url, refererUrl, callback);
+                    targetUrl = resolvedTarget.primaryUrl;
+                    sourceSite = resolvedTarget.sourceSite;
+                    fallbackUrls = resolvedTarget.fallbackUrls;
+                    refererUrl = firstNonEmpty(resolvedTarget.refererUrl, refererUrl);
+                }
+                callback.onResolved("search", targetUrl,
+                        mergedSearchCandidates(results, i, targetUrl, fallbackUrls),
+                        mergedSearchCandidateLabels(results, i, targetUrl, fallbackUrls));
+                String fileName = requestedName == null || requestedName.trim().isEmpty()
+                        ? FileNames.choose(Uri.parse(targetUrl), FileNames.sanitize(query) + ".mp4")
+                        : FileNames.choose(Uri.parse(targetUrl), requestedName);
+                downloadWithFallbacks(targetUrl, fallbackUrls, sourceSite, fileName, refererUrl, callback);
+                return;
+            } catch (IOException error) {
+                lastError = error;
+                callback.onStatus(context.getString(R.string.engine_search_result_failed, shortMessage(error)));
+            }
+        }
+        throw lastError == null
+                ? new IOException(context.getString(R.string.error_search_no_results, query))
+                : lastError;
+    }
+
+    private List<String> mergedSearchCandidates(
+            List<VideoSearchResolver.Result> results,
+            int selectedIndex,
+            String targetUrl,
+            List<String> fallbackUrls) {
+        List<String> urls = new ArrayList<>();
+        addUnique(urls, targetUrl);
+        for (String fallbackUrl : fallbackUrls) {
+            addUnique(urls, fallbackUrl);
+        }
+        for (int i = selectedIndex + 1; i < results.size(); i++) {
+            addUnique(urls, results.get(i).url);
+        }
+        for (int i = 0; i < selectedIndex; i++) {
+            addUnique(urls, results.get(i).url);
+        }
+        return urls;
+    }
+
+    private List<String> mergedSearchCandidateLabels(
+            List<VideoSearchResolver.Result> results,
+            int selectedIndex,
+            String targetUrl,
+            List<String> fallbackUrls) {
+        List<String> labels = new ArrayList<>();
+        List<String> urls = new ArrayList<>();
+        addUniqueWithLabel(urls, labels, targetUrl, context.getString(R.string.search_candidate_selected, results.get(selectedIndex).title));
+        for (String fallbackUrl : fallbackUrls) {
+            addUniqueWithLabel(urls, labels, fallbackUrl, context.getString(R.string.search_candidate_media_fallback));
+        }
+        for (int i = selectedIndex + 1; i < results.size(); i++) {
+            addUniqueWithLabel(urls, labels, results.get(i).url, context.getString(R.string.search_candidate_alternate, results.get(i).title));
+        }
+        for (int i = 0; i < selectedIndex; i++) {
+            addUniqueWithLabel(urls, labels, results.get(i).url, context.getString(R.string.search_candidate_previous, results.get(i).title));
+        }
+        return labels;
+    }
+
+    private void addUnique(List<String> urls, String url) {
+        if (url != null && !url.trim().isEmpty() && !urls.contains(url)) {
+            urls.add(url);
+        }
+    }
+
+    private void addUniqueWithLabel(List<String> urls, List<String> labels, String url, String label) {
+        if (url == null || url.trim().isEmpty() || urls.contains(url)) {
+            return;
+        }
+        urls.add(url);
+        labels.add(label == null ? "" : label);
     }
 
     private void importCookieHeader(String rawUrl, String cookieHeader) {
@@ -527,13 +637,18 @@ final class DownloadEngine {
     }
 
     private ResolvedTarget resolvePageToMedia(String rawUrl, Callback callback) throws IOException {
+        return resolvePageToMedia(rawUrl, "", callback);
+    }
+
+    private ResolvedTarget resolvePageToMedia(String rawUrl, String initialRefererUrl, Callback callback) throws IOException {
         String currentUrl = rawUrl;
+        String currentReferer = initialRefererUrl == null ? "" : initialRefererUrl.trim();
         for (int depth = 0; depth < PAGE_RESOLVE_DEPTH_LIMIT; depth++) {
-            String pageText = readText(currentUrl);
+            String pageText = readText(currentUrl, currentReferer);
             if (looksLikeHlsManifest(pageText)) {
                 callback.onStatus(context.getString(R.string.engine_hls_manifest_detected));
                 callback.onResolved(MediaResolver.sourceSite(currentUrl), currentUrl, Collections.singletonList(currentUrl), Collections.singletonList("HLS manifest"));
-                return new ResolvedTarget(currentUrl, MediaResolver.sourceSite(currentUrl), new ArrayList<>(), "");
+                return new ResolvedTarget(currentUrl, MediaResolver.sourceSite(currentUrl), new ArrayList<>(), currentReferer);
             }
 
             String anime1Url = resolveAnime1ApiMedia(currentUrl, pageText);
@@ -551,6 +666,7 @@ final class DownloadEngine {
             if (resolved.primaryIsMedia) {
                 return new ResolvedTarget(resolved.primaryUrl, resolved.sourceSite, mediaFallbacks(resolved.candidates, resolved.primaryUrl), currentUrl);
             }
+            currentReferer = currentUrl;
             currentUrl = resolved.primaryUrl;
         }
         throw new IOException(context.getString(R.string.error_resolve_depth_exceeded));
@@ -578,7 +694,7 @@ final class DownloadEngine {
                     downloadDash(targetUrl, FileNames.replaceExtension(fileName, ".mp4"), refererUrl, callback);
                 } else if (isHlsUrl(targetUrl) || (targetUrl.equals(primaryUrl) && !isMediaUrl(targetUrl))) {
                     callback.onStatus(context.getString(R.string.engine_resolving_hls));
-                    downloadHls(targetUrl, FileNames.replaceExtension(fileName, ".ts"), refererUrl, callback);
+                    downloadHls(targetUrl, fileName, refererUrl, callback);
                 } else {
                     callback.onStatus(context.getString(R.string.engine_starting_http));
                     downloadHttp(targetUrl, fileName, refererUrl, callback);
@@ -654,14 +770,14 @@ final class DownloadEngine {
         callback.onDone(output);
     }
 
-    private void downloadHls(String rawUrl, String fileName, String refererUrl, Callback callback) throws IOException {
+    private void downloadHls(String rawUrl, String requestedFileName, String refererUrl, Callback callback) throws IOException {
         HlsPlaylist playlist = resolveHlsPlaylist(rawUrl, refererUrl, callback);
         List<HlsSegment> segments = playlist.segments;
         if (segments.isEmpty()) {
             throw new IOException("HLS manifest did not contain downloadable segments");
         }
 
-        File output = outputFile(fileName);
+        File output = outputFile(FileNames.replaceExtension(requestedFileName, ".ts"));
         File part = new File(output.getParentFile(), output.getName() + ".part");
         File checkpoint = new File(output.getParentFile(), output.getName() + ".hlsstate");
         int startIndex = loadHlsCheckpoint(checkpoint, playlist, part);
@@ -696,7 +812,7 @@ final class DownloadEngine {
         if (checkpoint.exists()) {
             checkpoint.delete();
         }
-        callback.onDone(output);
+        callback.onDone(remuxHlsOutput(output, requestedFileName, callback));
     }
 
     private void downloadDash(String rawUrl, String fileName, String refererUrl, Callback callback) throws IOException {
@@ -745,6 +861,26 @@ final class DownloadEngine {
             checkpoint.delete();
         }
         callback.onDone(output);
+    }
+
+    private File remuxHlsOutput(File transportOutput, String requestedFileName, Callback callback) {
+        File mp4Output = outputFile(FileNames.replaceExtension(requestedFileName, ".mp4"));
+        if (transportOutput.equals(mp4Output)) {
+            return transportOutput;
+        }
+        try {
+            callback.onStatus(context.getString(R.string.engine_remuxing_mp4));
+            File remuxed = MediaRemuxer.remuxToMp4(transportOutput, mp4Output);
+            if (transportOutput.exists() && !transportOutput.delete()) {
+                callback.onStatus(context.getString(R.string.engine_remuxed_mp4_keep_source));
+            } else {
+                callback.onStatus(context.getString(R.string.engine_remuxed_mp4));
+            }
+            return remuxed;
+        } catch (Exception error) {
+            callback.onStatus(context.getString(R.string.engine_remux_mp4_failed_keep_ts, shortMessage(error)));
+            return transportOutput;
+        }
     }
 
     private boolean looksLikeHlsManifest(String text) {

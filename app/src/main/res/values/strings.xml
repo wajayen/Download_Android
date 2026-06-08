@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">Downloader</string>
     <string name="build_ready">Paste video URLs, browser request headers, or Copy as cURL text from a protected page.</string>
-    <string name="hint_url">curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...&#10;User-Agent: Mozilla/5.0 ...</string>
+    <string name="hint_url">URL, video title, code, or Copy as cURL text&#10;curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...</string>
     <string name="hint_file_name">File name (optional)</string>
     <string name="action_download">Download</string>
     <string name="action_open_menu">Open menu</string>
@@ -25,6 +25,7 @@
     <string name="status_idle">No downloads queued</string>
     <string name="status_cancelling">Cancelling...</string>
     <string name="toast_enter_url">Enter at least one HTTP or HTTPS URL</string>
+    <string name="toast_enter_url_or_search">Enter a URL, video title, or code</string>
     <string name="toast_no_retry_task">No failed or cancelled task to retry</string>
     <string name="toast_no_alternate_source">No alternate source candidate available</string>
     <string name="toast_no_source_candidate">No source candidate available</string>
@@ -34,6 +35,7 @@
     <string name="toast_logs_exported">Logs exported</string>
     <string name="toast_log_export_failed">Log export failed</string>
     <string name="status_download_queued">Download queued\n%1$s</string>
+    <string name="status_search_queued">Search queued\n%1$s</string>
     <string name="status_queued_downloads">Queued %1$d downloads</string>
     <string name="status_retry_queued">Retry queued\n%1$s</string>
     <string name="status_alternate_source_queued">Alternate source queued\n%1$s\n%2$s</string>
@@ -78,6 +80,9 @@
     <string name="engine_retrying_alternate_source">Retrying alternate source %1$d/%2$d</string>
     <string name="engine_resolving_dash">Resolving DASH manifest</string>
     <string name="engine_resolving_hls">Resolving HLS manifest</string>
+    <string name="engine_searching_video">Searching video: %1$s</string>
+    <string name="engine_search_try_result">Trying search result %1$d/%2$d: %3$s</string>
+    <string name="engine_search_result_failed">Search result failed, trying next: %1$s</string>
     <string name="engine_starting_http">Starting HTTP download</string>
     <string name="engine_source_failed_switching">Source failed, switching: %1$s</string>
     <string name="engine_cancelled_keep_partial">Cancelled; keeping partial file</string>
@@ -87,10 +92,19 @@
     <string name="engine_dash_representation">DASH representation %1$s</string>
     <string name="engine_downloading_dash_segment">Downloading DASH segment %1$d / %2$d</string>
     <string name="engine_hls_variant">Selected HLS variant %1$s</string>
+    <string name="engine_remuxing_mp4">Remuxing to MP4</string>
+    <string name="engine_remuxed_mp4">Remuxed to MP4</string>
+    <string name="engine_remuxed_mp4_keep_source">Remuxed to MP4; kept source transport file</string>
+    <string name="engine_remux_mp4_failed_keep_ts">MP4 remux failed; keeping TS output: %1$s</string>
     <string name="error_no_media_candidate">Could not find a playable mp4/m3u8 media URL on this page</string>
     <string name="error_resolve_depth_exceeded">Could not resolve a playable media URL after following player pages</string>
     <string name="error_unsupported_hls_key_method">Unsupported HLS key method: %1$s</string>
     <string name="error_missing_hls_key_uri">HLS AES-128 key is missing a URI</string>
     <string name="error_invalid_hls_key_length">HLS AES-128 key length is invalid: %1$d</string>
     <string name="error_hls_decrypt_failed">HLS segment decryption failed</string>
+    <string name="error_search_no_results">No searchable download result found for: %1$s</string>
+    <string name="search_candidate_selected">selected search result: %1$s</string>
+    <string name="search_candidate_media_fallback">resolved media fallback</string>
+    <string name="search_candidate_alternate">alternate search result: %1$s</string>
+    <string name="search_candidate_previous">previous search result: %1$s</string>
 </resources>
