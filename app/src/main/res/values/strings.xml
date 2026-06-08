@@ -144,4 +144,14 @@
     <string name="engine_media_validated">Validated completed media file</string>
     <string name="engine_http_content_type_validated">Validated HTTP media content type</string>
     <string name="engine_http_size_validated">Validated HTTP download size</string>
+    <string name="action_set_download_directory">Set Download Directory</string>
+    <string name="toast_download_directory_set">Download directory set</string>
+    <string name="toast_download_directory_picker_failed">Could not open folder picker</string>
+    <string name="engine_dash_audio_representation">DASH audio representation %1$s</string>
+    <string name="engine_downloading_dash_audio">Downloading DASH audio track</string>
+    <string name="engine_downloading_dash_audio_segment">Downloading DASH audio segment %1$d / %2$d</string>
+    <string name="engine_muxing_dash_audio">Muxing DASH video and audio</string>
+    <string name="engine_muxed_dash_audio">Muxed DASH video and audio</string>
+    <string name="engine_mux_dash_audio_failed_keep_video">DASH audio mux failed; keeping video-only output: %1$s</string>
+    <string name="engine_media_duration_validated">Validated media duration</string>
 </resources>

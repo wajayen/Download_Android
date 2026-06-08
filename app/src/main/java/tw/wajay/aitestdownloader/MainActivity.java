@@ -7,6 +7,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -14,6 +15,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.DocumentsContract;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -40,6 +42,7 @@ import java.util.regex.Pattern;
 import org.json.JSONObject;
 
 public final class MainActivity extends Activity {
+    private static final int REQUEST_DOWNLOAD_DIRECTORY = 2001;
     private static final int BACKGROUND = Color.rgb(250, 248, 245);
     private static final int SURFACE = Color.rgb(255, 255, 253);
     private static final int SURFACE_TINT = Color.rgb(246, 241, 238);
@@ -113,6 +116,24 @@ public final class MainActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         hydrateSharedText(intent);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_DOWNLOAD_DIRECTORY && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            Uri uri = data.getData();
+            int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            try {
+                getContentResolver().takePersistableUriPermission(uri, flags);
+            } catch (Exception ignored) {
+                // Some providers grant access without persistable flags.
+            }
+            DownloadDirectorySettings.set(this, uri);
+            Toast.makeText(this, getString(R.string.toast_download_directory_set), Toast.LENGTH_SHORT).show();
+            refreshCompletedVideos();
+        }
     }
 
     @Override
@@ -418,10 +439,7 @@ public final class MainActivity extends Activity {
         PopupMenu menu = new PopupMenu(this, anchor);
         menu.getMenu().add(0, 1, 0, getString(R.string.action_refresh));
         menu.getMenu().add(0, 2, 1, getString(R.string.action_cancel));
-        LanguageSettings.Option[] options = LanguageSettings.options();
-        for (int i = 0; i < options.length; i++) {
-            menu.getMenu().add(1, 1000 + i, 10 + i, getString(options[i].labelResId));
-        }
+        menu.getMenu().add(0, 3, 2, getString(R.string.action_set_download_directory));
         menu.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == 1) {
                 refreshStatus();
@@ -432,19 +450,26 @@ public final class MainActivity extends Activity {
                 statusText.setText(getString(R.string.status_cancelling));
                 return true;
             }
-            int languageIndex = item.getItemId() - 1000;
-            if (languageIndex >= 0 && languageIndex < options.length) {
-                String selected = options[languageIndex].code;
-                if (!selected.equals(LanguageSettings.current(this))) {
-                    LanguageSettings.set(this, selected);
-                    Toast.makeText(this, getString(R.string.toast_language_changed), Toast.LENGTH_SHORT).show();
-                    recreate();
-                }
+            if (item.getItemId() == 3) {
+                openDownloadDirectoryPicker();
                 return true;
             }
             return false;
         });
         menu.show();
+    }
+
+    private void openDownloadDirectoryPicker() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+        try {
+            startActivityForResult(intent, REQUEST_DOWNLOAD_DIRECTORY);
+        } catch (Exception error) {
+            Toast.makeText(this, getString(R.string.toast_download_directory_picker_failed), Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void startDownload() {
@@ -876,6 +901,7 @@ public final class MainActivity extends Activity {
         addCompletedVideos(videos, dir);
         File publicDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "AI Test Downloader");
         addCompletedVideos(videos, publicDir);
+        addCompletedVideosFromTree(videos);
         videos.sort((left, right) -> Long.compare(right.updatedAt, left.updatedAt));
         return labeledCompletedVideos(videos);
     }
@@ -897,6 +923,42 @@ public final class MainActivity extends Activity {
             if (!containsCompletedVideo(videos, file)) {
                 videos.add(CompletedVideo.fromFile(file, ""));
             }
+        }
+    }
+
+    private void addCompletedVideosFromTree(List<CompletedVideo> videos) {
+        Uri treeUri = DownloadDirectorySettings.treeUri(this);
+        if (treeUri == null) {
+            return;
+        }
+        String treeDocumentId = DocumentsContract.getTreeDocumentId(treeUri);
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, treeDocumentId);
+        String[] projection = new String[]{
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+                DocumentsContract.Document.COLUMN_SIZE
+        };
+        try (Cursor cursor = getContentResolver().query(childrenUri, projection, null, null, null)) {
+            if (cursor == null) {
+                return;
+            }
+            int idColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID);
+            int nameColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
+            int modifiedColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_LAST_MODIFIED);
+            int sizeColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_SIZE);
+            while (cursor.moveToNext()) {
+                String name = cursor.getString(nameColumn);
+                if (!isPlayableVideo(name) || cursor.getLong(sizeColumn) <= 0L) {
+                    continue;
+                }
+                Uri uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, cursor.getString(idColumn));
+                if (canOpenVideoUri(uri) && !containsCompletedVideo(videos, uri)) {
+                    videos.add(CompletedVideo.fromUri(uri, name, cursor.getLong(modifiedColumn), ""));
+                }
+            }
+        } catch (Exception ignored) {
+            // The selected provider may be temporarily unavailable; file-based directories still work.
         }
     }
 

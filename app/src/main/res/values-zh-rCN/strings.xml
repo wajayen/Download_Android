@@ -144,4 +144,14 @@
     <string name="engine_media_validated">已验证完成媒体文件</string>
     <string name="engine_http_content_type_validated">已验证 HTTP 媒体内容类型</string>
     <string name="engine_http_size_validated">已验证 HTTP 下载大小</string>
+    <string name="action_set_download_directory">设置下载目录</string>
+    <string name="toast_download_directory_set">已设置下载目录</string>
+    <string name="toast_download_directory_picker_failed">无法打开文件夹选择器</string>
+    <string name="engine_dash_audio_representation">DASH 音频表示 %1$s</string>
+    <string name="engine_downloading_dash_audio">正在下载 DASH 音频轨</string>
+    <string name="engine_downloading_dash_audio_segment">正在下载 DASH 音频分片 %1$d / %2$d</string>
+    <string name="engine_muxing_dash_audio">正在合并 DASH 视频与音频</string>
+    <string name="engine_muxed_dash_audio">已合并 DASH 视频与音频</string>
+    <string name="engine_mux_dash_audio_failed_keep_video">DASH 音频合并失败；保留纯视频输出：%1$s</string>
+    <string name="engine_media_duration_validated">已验证媒体时长</string>
 </resources>

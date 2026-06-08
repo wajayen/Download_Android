@@ -3,8 +3,10 @@ package tw.wajay.aitestdownloader;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
+import android.provider.DocumentsContract;
 import android.os.Environment;
 import android.provider.MediaStore;
 
@@ -27,6 +29,18 @@ final class OutputExporter {
         if (source == null || !source.exists()) {
             throw new IOException("Output file missing");
         }
+        Uri customTree = DownloadDirectorySettings.treeUri(context);
+        if (customTree != null) {
+            try {
+                return exportToTree(context, customTree, source);
+            } catch (Exception ignored) {
+                // Persisted tree permissions can disappear when users revoke access or remove storage.
+            }
+        }
+        return exportToDefaultPublicDownloads(context, source);
+    }
+
+    private static String exportToDefaultPublicDownloads(Context context, File source) throws IOException {
         if (Build.VERSION.SDK_INT < 29) {
             return exportToLegacyPublicDownloads(source).getAbsolutePath();
         }
@@ -68,6 +82,80 @@ final class OutputExporter {
         }
 
         return uri.toString();
+    }
+
+    private static String exportToTree(Context context, Uri treeUri, File source) throws IOException {
+        ContentResolver resolver = context.getApplicationContext().getContentResolver();
+        String documentId = DocumentsContract.getTreeDocumentId(treeUri);
+        Uri parentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId);
+        String fileName = uniqueTreeName(resolver, treeUri, source.getName());
+        Uri targetUri = DocumentsContract.createDocument(resolver, parentUri, mimeType(source.getName()), fileName);
+        if (targetUri == null) {
+            throw new IOException("Could not create selected download file");
+        }
+        boolean success = false;
+        try (OutputStream rawOutput = resolver.openOutputStream(targetUri, "w");
+             BufferedOutputStream output = rawOutput == null ? null : new BufferedOutputStream(rawOutput);
+             BufferedInputStream input = new BufferedInputStream(new FileInputStream(source))) {
+            if (output == null) {
+                throw new IOException("Could not open selected download file");
+            }
+            byte[] buffer = new byte[128 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+            output.flush();
+            success = true;
+        } finally {
+            if (!success) {
+                resolver.delete(targetUri, null, null);
+            }
+        }
+        return targetUri.toString();
+    }
+
+    private static String uniqueTreeName(ContentResolver resolver, Uri treeUri, String fileName) {
+        String safeName = (fileName == null || fileName.trim().isEmpty()) ? "download.bin" : fileName.trim();
+        java.util.Set<String> names = existingTreeNames(resolver, treeUri);
+        if (!names.contains(safeName)) {
+            return safeName;
+        }
+        int dot = safeName.lastIndexOf('.');
+        String stem = dot > 0 ? safeName.substring(0, dot) : safeName;
+        String extension = dot > 0 ? safeName.substring(dot) : "";
+        for (int i = 2; i < 1000; i++) {
+            String candidate = stem + " (" + i + ")" + extension;
+            if (!names.contains(candidate)) {
+                return candidate;
+            }
+        }
+        return stem + " (" + System.currentTimeMillis() + ")" + extension;
+    }
+
+    private static java.util.Set<String> existingTreeNames(ContentResolver resolver, Uri treeUri) {
+        java.util.Set<String> names = new java.util.HashSet<>();
+        String documentId = DocumentsContract.getTreeDocumentId(treeUri);
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, documentId);
+        try (Cursor cursor = resolver.query(
+                childrenUri,
+                new String[]{DocumentsContract.Document.COLUMN_DISPLAY_NAME},
+                null,
+                null,
+                null)) {
+            if (cursor == null) {
+                return names;
+            }
+            while (cursor.moveToNext()) {
+                String name = cursor.getString(0);
+                if (name != null && !name.isEmpty()) {
+                    names.add(name);
+                }
+            }
+        } catch (Exception ignored) {
+            // If listing fails, let createDocument decide the final behavior.
+        }
+        return names;
     }
 
     private static File exportToLegacyPublicDownloads(File source) throws IOException {

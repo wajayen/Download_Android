@@ -6,6 +6,7 @@ import android.util.Base64;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -54,6 +55,9 @@ final class MediaResolver {
     private static final Pattern JSON_ESCAPED_MEDIA_URL = Pattern.compile(
             "https?:\\\\/\\\\/[^\\s\"'<>]+?\\.(?:m3u8|mp4|mpd|webm|m4v)(?:\\?[^\\s\"'<>]*)?",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern MIXDROP_WURL_MEDIA_URL = Pattern.compile(
+            "\\bwurl\\s*[:=]\\s*[\"']((?:https?:)?//[^\"']+?\\.(?:m3u8|mp4|mpd|webm|m4v)(?:\\?[^\"']*)?)[\"']",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern IFRAME_URL = Pattern.compile(
             "<iframe[^>]+(?:src|data-src)=[\"']([^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE);
@@ -78,6 +82,30 @@ final class MediaResolver {
     private static final Pattern TWITTER_VARIANT_URL = Pattern.compile(
             "\"url\"\\s*:\\s*\"((?:https?:\\\\?/\\\\?/|\\\\?/\\\\?/)[^\"]+(?:video\\.twimg\\.com|\\.m3u8|\\.mp4)[^\"]*)\"",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern MOVIEFFM_VIDEOS_BLOCK = Pattern.compile(
+            "\"videos\"\\s*:\\s*\\[(.*?)\\]",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern MOVIEFFM_JSON_URL = Pattern.compile(
+            "\"url\"\\s*:\\s*\"([^\"]+)\"",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern MOVIEFFM_DOWNLOAD_HREF = Pattern.compile(
+            "href=[\"']([^\"']+\\?download[^\"']*)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern MOVIEFFM_SHORTCODE_URL = Pattern.compile(
+            "\\[pmoive\\b[^\\]]*\\burl\\s*=\\s*[\"']([^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern MOVIEFFM_VIDEOURL = Pattern.compile(
+            "videourl\\s*:\\s*'([^']+)'",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern MOVIEFFM_IFRAME_JSON_URL = Pattern.compile(
+            "\"url\"\\s*:\\s*\"((?:https?:)?//[^\"]+)\"\\s*,\\s*\"type\"\\s*:\\s*\"iframe\"",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern XIAOYA_PLAY_URL = Pattern.compile(
+            "(?:href|data-url|data-href|data-play|url|play_url|playUrl)\\s*[:=]\\s*[\"']([^\"']*/vod/play/id/[^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern XIAOYA_PP_START = Pattern.compile(
+            "var\\s+pp\\s*=\\s*\\{",
+            Pattern.CASE_INSENSITIVE);
     private static final String[] PLAYER_KEYS = new String[]{
             "url", "src", "play_url", "playUrl", "urls", "backup", "backup_urls",
             "m3u8_urls", "playlist", "sources", "file", "video", "videos",
@@ -96,6 +124,9 @@ final class MediaResolver {
         addPlayerObjectCandidates(candidates, labels, pageText, pageUrl);
         addGenericCandidates(candidates, labels, pageText, pageUrl);
         addIframeCandidates(candidates, labels, pageText, pageUrl);
+        addMovieFfmExternalCandidates(candidates, labels, pageText, pageUrl, site);
+        addXiaoyaPlayCandidates(candidates, labels, pageText, pageUrl, site);
+        addXiaoyaPpCandidates(candidates, labels, pageText, pageUrl, site);
         addSitePlayLinkCandidates(candidates, labels, pageText, pageUrl, site);
         addAniGamerCandidates(candidates, labels, pageText, pageUrl, site);
         addSocialCandidates(candidates, labels, pageText, pageUrl, site);
@@ -192,6 +223,7 @@ final class MediaResolver {
         addRegexCandidates(out, labels, ATTR_MEDIA_URL.matcher(pageText), pageUrl, true, "media attribute");
         addRegexCandidates(out, labels, SCRIPT_MEDIA_ASSIGNMENT.matcher(pageText), pageUrl, true, "player script");
         addRegexCandidates(out, labels, JSON_ESCAPED_MEDIA_URL.matcher(pageText), pageUrl, false, "json escaped media");
+        addRegexCandidates(out, labels, MIXDROP_WURL_MEDIA_URL.matcher(pageText), pageUrl, true, "Mixdrop wurl media");
     }
 
     private static void addIframeCandidates(List<String> out, Map<String, String> labels, String pageText, String pageUrl) {
@@ -202,6 +234,116 @@ final class MediaResolver {
                 out.add(iframe);
                 putLabel(labels, iframe, "iframe/player");
             }
+        }
+    }
+
+    private static void addMovieFfmExternalCandidates(List<String> out, Map<String, String> labels, String pageText, String pageUrl, String site) {
+        if (!"movieffm".equals(site)) {
+            return;
+        }
+        String text = htmlDecoded(pageText);
+        Set<String> seen = new LinkedHashSet<>(out);
+        Matcher blockMatcher = MOVIEFFM_VIDEOS_BLOCK.matcher(text);
+        while (blockMatcher.find()) {
+            Matcher urlMatcher = MOVIEFFM_JSON_URL.matcher(blockMatcher.group(1));
+            while (urlMatcher.find()) {
+                addMovieFfmExternalCandidate(out, labels, seen, pageUrl, urlMatcher.group(1), "MovieFFM external source");
+            }
+        }
+        addMovieFfmExternalRegex(out, labels, seen, MOVIEFFM_DOWNLOAD_HREF.matcher(text), pageUrl, "MovieFFM download link");
+        addMovieFfmExternalRegex(out, labels, seen, MOVIEFFM_SHORTCODE_URL.matcher(text), pageUrl, "MovieFFM shortcode source");
+        addMovieFfmExternalRegex(out, labels, seen, MOVIEFFM_VIDEOURL.matcher(text), pageUrl, "MovieFFM video URL");
+        addMovieFfmExternalRegex(out, labels, seen, MOVIEFFM_IFRAME_JSON_URL.matcher(text), pageUrl, "MovieFFM iframe source");
+    }
+
+    private static void addMovieFfmExternalRegex(List<String> out, Map<String, String> labels, Set<String> seen, Matcher matcher, String pageUrl, String label) {
+        while (matcher.find()) {
+            addMovieFfmExternalCandidate(out, labels, seen, pageUrl, matcher.group(1), label);
+        }
+    }
+
+    private static void addMovieFfmExternalCandidate(List<String> out, Map<String, String> labels, Set<String> seen, String pageUrl, String rawUrl, String label) {
+        String candidate = normalizeMovieFfmExternalUrl(resolveUrl(pageUrl, rawUrl));
+        if (candidate != null && isMovieFfmExternalHost(candidate) && seen.add(candidate)) {
+            out.add(candidate);
+            putLabel(labels, candidate, label);
+        }
+    }
+
+    private static void addXiaoyaPlayCandidates(List<String> out, Map<String, String> labels, String pageText, String pageUrl, String site) {
+        if (!"xiaoyakankan".equals(site)) {
+            return;
+        }
+        String text = htmlDecoded(pageText);
+        Set<String> seen = new LinkedHashSet<>(out);
+        Matcher matcher = XIAOYA_PLAY_URL.matcher(text);
+        while (matcher.find()) {
+            String candidate = resolveUrl(pageUrl, matcher.group(1));
+            if (candidate != null && isXiaoyaPlayUrl(candidate) && seen.add(candidate)) {
+                out.add(candidate);
+                putLabel(labels, candidate, "XiaoyaKankan play page");
+            }
+        }
+    }
+
+    private static void addXiaoyaPpCandidates(List<String> out, Map<String, String> labels, String pageText, String pageUrl, String site) {
+        if (!"xiaoyakankan".equals(site)) {
+            return;
+        }
+        JSONObject pp = extractXiaoyaPpObject(pageText);
+        if (pp == null) {
+            return;
+        }
+        JSONArray lines = pp.optJSONArray("lines");
+        if (lines == null || lines.length() == 0) {
+            return;
+        }
+        String vod = queryParameter(pageUrl, "vod");
+        String vodKey = "";
+        int episodeIndex = 0;
+        if (!vod.isEmpty()) {
+            int dash = vod.indexOf('-');
+            vodKey = dash >= 0 ? vod.substring(0, dash) : vod;
+            if (dash >= 0) {
+                try {
+                    episodeIndex = Math.max(0, Integer.parseInt(vod.substring(dash + 1)));
+                } catch (NumberFormatException ignored) {
+                    episodeIndex = 0;
+                }
+            }
+        }
+        Set<String> seen = new LinkedHashSet<>(out);
+        for (int i = 0; i < lines.length(); i++) {
+            JSONArray row = lines.optJSONArray(i);
+            if (row == null || row.length() < 4) {
+                continue;
+            }
+            if (!vodKey.isEmpty() && !vodKey.equals(String.valueOf(row.opt(0)))) {
+                continue;
+            }
+            addXiaoyaPpRowCandidates(out, labels, seen, row, episodeIndex, pageUrl);
+        }
+        if (vodKey.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < lines.length(); i++) {
+            JSONArray row = lines.optJSONArray(i);
+            if (row != null && row.length() >= 4 && !vodKey.equals(String.valueOf(row.opt(0)))) {
+                addXiaoyaPpRowCandidates(out, labels, seen, row, episodeIndex, pageUrl);
+            }
+        }
+    }
+
+    private static void addXiaoyaPpRowCandidates(List<String> out, Map<String, String> labels, Set<String> seen, JSONArray row, int episodeIndex, String pageUrl) {
+        JSONArray candidates = row.optJSONArray(3);
+        if (candidates == null || candidates.length() == 0) {
+            return;
+        }
+        int index = Math.min(Math.max(0, episodeIndex), candidates.length() - 1);
+        String candidate = resolveUrl(pageUrl, String.valueOf(candidates.opt(index)));
+        if (candidate != null && isMediaUrl(candidate) && seen.add(candidate)) {
+            out.add(candidate);
+            putLabel(labels, candidate, "XiaoyaKankan pp line " + firstNonEmpty(String.valueOf(row.opt(0)), String.valueOf(out.size())));
         }
     }
 
@@ -276,6 +418,7 @@ final class MediaResolver {
 
     private static void addPlayerObjectCandidates(List<String> out, Map<String, String> labels, String pageText, String pageUrl) {
         Set<String> seen = new LinkedHashSet<>(out);
+        String site = sourceSite(pageUrl);
         for (JSONObject object : extractPlayerObjects(pageText)) {
             int encryptMode = object.optInt("encrypt", 0);
             String objectLabel = firstObjectLabel(object);
@@ -294,6 +437,58 @@ final class MediaResolver {
             for (String key : PLAYER_KEYS) {
                 addCandidateValue(out, labels, seen, object.opt(key), pageUrl, encryptMode, firstNonEmpty(objectLabel, "player " + key));
             }
+            if ("gimy".equals(site)) {
+                addGimyIframeCandidates(out, labels, seen, object, pageUrl, objectLabel);
+            }
+        }
+    }
+
+    private static void addGimyIframeCandidates(List<String> out, Map<String, String> labels, Set<String> seen, JSONObject object, String pageUrl, String objectLabel) {
+        String playUrl = object == null ? "" : decodeMacCmsUrl(object.optString("url", ""), object.optInt("encrypt", 0));
+        playUrl = playUrl == null ? "" : playUrl.trim();
+        if (playUrl.isEmpty() || isMediaUrl(playUrl)) {
+            return;
+        }
+        String playFrom = object.optString("from", "").trim();
+        String linkNext = object.optString("link_next", "").trim();
+        String base = siteRoot(pageUrl, "https://gimy01.tv");
+        String normalIframe = joinUrl(base, "/aiplayer/dp/");
+        String iframeBase = normalIframe;
+        String jctype = "normal";
+        if (isOneOf(playFrom, "JD4K", "JD2K", "JDQM", "JDHG")) {
+            iframeBase = "https://play.gimy01.tv/dp/";
+            jctype = playFrom;
+        } else if (isOneOf(playFrom, "JSYBL", "JSYMG", "JSYQY", "JSYDJ", "JSYHS", "JSYRR", "JSYYK", "JSYTX")) {
+            iframeBase = "https://play.gimy01.tv/i/";
+            jctype = playFrom;
+        } else if ("djplayer".equals(playFrom) || playUrl.startsWith("JinLiDj-")) {
+            iframeBase = joinUrl(base, "/aiplayer/jin.php");
+            jctype = playFrom.isEmpty() ? "djplayer" : playFrom;
+        } else if ("JK2".equals(playFrom) || playUrl.startsWith("JK2-")) {
+            iframeBase = joinUrl(base, "/aiplayer/");
+            jctype = playFrom.isEmpty() ? "JK2" : playFrom;
+        } else if ("Disney".equals(playFrom) || "qingshan".equals(playFrom)) {
+            iframeBase = joinUrl(base, "/gimyplayer/");
+            jctype = playFrom;
+        }
+        addGimyIframeCandidate(out, labels, seen, iframeBase, playUrl, jctype, linkNext, base, objectLabel);
+        if (!iframeBase.equals(normalIframe)) {
+            addGimyIframeCandidate(out, labels, seen, normalIframe, playUrl, "normal", "", base, objectLabel);
+        }
+    }
+
+    private static void addGimyIframeCandidate(List<String> out, Map<String, String> labels, Set<String> seen, String iframeBase, String playUrl, String jctype, String linkNext, String base, String objectLabel) {
+        StringBuilder builder = new StringBuilder(iframeBase);
+        builder.append(iframeBase.contains("?") ? "&" : "?");
+        builder.append("url=").append(urlEncode(playUrl));
+        builder.append("&jctype=").append(urlEncode(jctype));
+        if (linkNext != null && !linkNext.trim().isEmpty()) {
+            builder.append("&next=").append(urlEncode(joinUrl(base, linkNext)));
+        }
+        String candidate = builder.toString();
+        if (seen.add(candidate)) {
+            out.add(candidate);
+            putLabel(labels, candidate, firstNonEmpty(objectLabel, "Gimy player iframe"));
         }
     }
 
@@ -313,6 +508,16 @@ final class MediaResolver {
             }
         }
         return objects;
+    }
+
+    private static JSONObject extractXiaoyaPpObject(String pageText) {
+        String text = pageText == null ? "" : pageText;
+        Matcher matcher = XIAOYA_PP_START.matcher(text);
+        if (!matcher.find()) {
+            return null;
+        }
+        String blob = balancedObject(text, matcher.end() - 1);
+        return blob == null ? null : parseLooseJsonObject(blob);
     }
 
     private static String balancedObject(String text, int start) {
@@ -605,6 +810,25 @@ final class MediaResolver {
         return first == null || first.trim().isEmpty() ? (second == null ? "" : second.trim()) : first.trim();
     }
 
+    private static boolean isOneOf(String value, String... choices) {
+        for (String choice : choices) {
+            if (choice.equals(value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String htmlDecoded(String raw) {
+        return (raw == null ? "" : raw)
+                .replace("\\/", "/")
+                .replace("&amp;", "&")
+                .replace("&quot;", "\"")
+                .replace("&#34;", "\"")
+                .replace("&#39;", "'")
+                .replace("&apos;", "'");
+    }
+
     private static String cleanLabel(String raw) {
         if (raw == null) {
             return "";
@@ -678,6 +902,79 @@ final class MediaResolver {
         } catch (MalformedURLException ignored) {
             return null;
         }
+    }
+
+    private static String siteRoot(String pageUrl, String fallback) {
+        try {
+            URL url = new URL(pageUrl);
+            return url.getProtocol() + "://" + url.getHost();
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private static String joinUrl(String base, String value) {
+        try {
+            return new URL(new URL(base), value == null ? "" : value).toString();
+        } catch (MalformedURLException ignored) {
+            return value == null ? "" : value;
+        }
+    }
+
+    private static String urlEncode(String value) {
+        try {
+            return URLEncoder.encode(value == null ? "" : value, "UTF-8");
+        } catch (Exception ignored) {
+            return value == null ? "" : value;
+        }
+    }
+
+    private static String queryParameter(String rawUrl, String key) {
+        try {
+            Uri uri = Uri.parse(rawUrl);
+            String value = uri.getQueryParameter(key);
+            return value == null ? "" : value.trim();
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private static String normalizeMovieFfmExternalUrl(String rawUrl) {
+        if (rawUrl == null || rawUrl.trim().isEmpty()) {
+            return null;
+        }
+        String decoded = htmlDecoded(rawUrl).trim();
+        Uri uri = Uri.parse(decoded);
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.US);
+        if (!(host.contains("mixdrop.ag") || host.contains("m1xdrop.click"))) {
+            return decoded;
+        }
+        String path = uri.getPath() == null ? "" : uri.getPath();
+        String[] parts = path.split("/");
+        if (parts.length >= 3 && ("e".equals(parts[1]) || "f".equals(parts[1]))) {
+            return (uri.getScheme() == null ? "https" : uri.getScheme()) + "://" + uri.getHost() + "/e/" + parts[2];
+        }
+        return decoded;
+    }
+
+    private static boolean isMovieFfmExternalHost(String rawUrl) {
+        String host = Uri.parse(rawUrl).getHost();
+        String lowered = host == null ? "" : host.toLowerCase(Locale.US);
+        return lowered.contains("mixdrop.ag")
+                || lowered.contains("m1xdrop.click")
+                || lowered.contains("dood.so")
+                || lowered.contains("dood.pm")
+                || lowered.contains("dood.wf")
+                || lowered.contains("dood.re")
+                || lowered.contains("dood.yt")
+                || lowered.contains("evoload.io");
+    }
+
+    private static boolean isXiaoyaPlayUrl(String rawUrl) {
+        Uri uri = Uri.parse(rawUrl);
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.US);
+        String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase(Locale.US);
+        return host.contains("xiaoyakankan") && path.contains("/vod/play/id/");
     }
 
     private static boolean looksLikeMediaOrPlayer(String url) {
@@ -755,6 +1052,9 @@ final class MediaResolver {
         }
         if ("movieffm".equals(sourceSite)) {
             score += hostPenalty(lowered, new String[]{"xluuss", "lzcdn", "hhuus", "qsstvw", "gsuus", "bfllvip"});
+            if (isMovieFfmExternalHost(url)) {
+                score -= 150;
+            }
         } else if ("gimy".equals(sourceSite)) {
             score += hostPenalty(lowered, new String[]{"ppqrrs", "qqqrst", "vodcnd", "phimgood", "ryiplay"});
         } else if ("xiaoyakankan".equals(sourceSite)) {

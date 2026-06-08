@@ -144,4 +144,14 @@
     <string name="engine_media_validated">完了したメディアファイルを検証しました</string>
     <string name="engine_http_content_type_validated">HTTP メディア Content-Type を検証しました</string>
     <string name="engine_http_size_validated">HTTP ダウンロードサイズを検証しました</string>
+    <string name="action_set_download_directory">ダウンロード先を設定</string>
+    <string name="toast_download_directory_set">ダウンロード先を設定しました</string>
+    <string name="toast_download_directory_picker_failed">フォルダー選択を開けませんでした</string>
+    <string name="engine_dash_audio_representation">DASH 音声表現 %1$s</string>
+    <string name="engine_downloading_dash_audio">DASH 音声トラックをダウンロード中</string>
+    <string name="engine_downloading_dash_audio_segment">DASH 音声セグメントをダウンロード中 %1$d / %2$d</string>
+    <string name="engine_muxing_dash_audio">DASH 映像と音声を多重化中</string>
+    <string name="engine_muxed_dash_audio">DASH 映像と音声を多重化しました</string>
+    <string name="engine_mux_dash_audio_failed_keep_video">DASH 音声の多重化に失敗しました。映像のみの出力を保持します：%1$s</string>
+    <string name="engine_media_duration_validated">メディアの長さを検証しました</string>
 </resources>

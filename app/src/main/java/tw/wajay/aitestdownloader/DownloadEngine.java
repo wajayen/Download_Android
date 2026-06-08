@@ -906,13 +906,31 @@ final class DownloadEngine {
         File output = outputFile(fileName);
         File part = new File(output.getParentFile(), output.getName() + ".part");
         File checkpoint = new File(output.getParentFile(), output.getName() + ".dashstate");
-        int startIndex = loadDashCheckpoint(checkpoint, plan, part);
-        boolean append = startIndex > 0 && part.exists();
-
         callback.onStatus(context.getString(R.string.engine_dash_representation, dashPlanDescription(plan)));
-        if (plan.audioTrackCount > 0) {
+        if (plan.audioPlan != null) {
+            callback.onStatus(context.getString(R.string.engine_dash_audio_representation, dashPlanDescription(plan.audioPlan)));
+        } else if (plan.audioTrackCount > 0) {
             callback.onStatus(context.getString(R.string.engine_dash_video_only_audio_pending, dashAudioSummary(plan)));
         }
+        if (!downloadDashTrack(plan, part, checkpoint, refererUrl, callback, true, R.string.engine_downloading_dash_segment)) {
+            return;
+        }
+        replace(part, output);
+        if (checkpoint.exists()) {
+            checkpoint.delete();
+        }
+
+        File completed = muxDashAudioIfAvailable(output, plan, refererUrl, callback);
+        if (completed == null) {
+            return;
+        }
+        validateCompletedMedia(completed, callback);
+        callback.onDone(completed);
+    }
+
+    private boolean downloadDashTrack(DashPlan plan, File part, File checkpoint, String refererUrl, Callback callback, boolean reportProgress, int statusResId) throws IOException {
+        int startIndex = loadDashCheckpoint(checkpoint, plan, part);
+        boolean append = startIndex > 0 && part.exists();
         try (FileOutputStream fos = new FileOutputStream(part, append);
             BufferedOutputStream outputStream = new BufferedOutputStream(fos)) {
             if (startIndex == 0) {
@@ -923,24 +941,60 @@ final class DownloadEngine {
             for (int index = startIndex; index < plan.segments.size(); index++) {
                 if (cancelled.get()) {
                     callback.onStatus(context.getString(R.string.engine_cancelled_keep_dash_partial));
-                    return;
+                    return false;
                 }
-                callback.onStatus(context.getString(R.string.engine_downloading_dash_segment, index + 1, plan.segments.size()));
+                callback.onStatus(context.getString(statusResId, index + 1, plan.segments.size()));
                 DashSegment segment = plan.segments.get(index);
                 byte[] data = readBytesWithRetry(segment.url, segment.byteRange, effectiveReferer(refererUrl, plan.manifestUrl), "empty DASH segment");
                 outputStream.write(data);
                 outputStream.flush();
                 saveDashCheckpoint(checkpoint, plan, index + 1);
-                callback.onProgress(index + 1L, plan.segments.size());
+                if (reportProgress) {
+                    callback.onProgress(index + 1L, plan.segments.size());
+                }
             }
         }
+        return true;
+    }
 
-        replace(part, output);
-        if (checkpoint.exists()) {
-            checkpoint.delete();
+    private File muxDashAudioIfAvailable(File videoOutput, DashPlan plan, String refererUrl, Callback callback) throws IOException {
+        if (plan.audioPlan == null) {
+            return videoOutput;
         }
-        validateCompletedMedia(output, callback);
-        callback.onDone(output);
+        File parent = videoOutput.getParentFile();
+        File audioPart = new File(parent, videoOutput.getName() + ".audio.part");
+        File audioOutput = new File(parent, videoOutput.getName() + ".audio.m4a");
+        File audioCheckpoint = new File(parent, videoOutput.getName() + ".audio.dashstate");
+        File muxed = new File(parent, videoOutput.getName() + ".muxed.mp4");
+        try {
+            callback.onStatus(context.getString(R.string.engine_downloading_dash_audio));
+            if (!downloadDashTrack(plan.audioPlan, audioPart, audioCheckpoint, refererUrl, callback, false, R.string.engine_downloading_dash_audio_segment)) {
+                return null;
+            }
+            replace(audioPart, audioOutput);
+            if (audioCheckpoint.exists()) {
+                audioCheckpoint.delete();
+            }
+            callback.onStatus(context.getString(R.string.engine_muxing_dash_audio));
+            File merged = MediaRemuxer.muxVideoAudioToMp4(videoOutput, audioOutput, muxed);
+            replace(merged, videoOutput);
+            if (audioOutput.exists()) {
+                audioOutput.delete();
+            }
+            callback.onStatus(context.getString(R.string.engine_muxed_dash_audio));
+        } catch (Exception error) {
+            callback.onStatus(context.getString(R.string.engine_mux_dash_audio_failed_keep_video, shortMessage(error)));
+            if (muxed.exists()) {
+                muxed.delete();
+            }
+            if (audioPart.exists()) {
+                audioPart.delete();
+            }
+            if (audioOutput.exists()) {
+                audioOutput.delete();
+            }
+        }
+        return videoOutput;
     }
 
     private void validateCompletedMedia(File output, Callback callback) throws IOException {
@@ -955,21 +1009,36 @@ final class DownloadEngine {
             extractor.setDataSource(output.getAbsolutePath());
             int trackCount = extractor.getTrackCount();
             int mediaTrackIndex = -1;
+            boolean hasDuration = false;
+            boolean hasPositiveDuration = false;
             for (int i = 0; i < trackCount; i++) {
                 MediaFormat format = extractor.getTrackFormat(i);
                 String mime = format.containsKey(MediaFormat.KEY_MIME) ? format.getString(MediaFormat.KEY_MIME) : "";
                 if (mime != null && (mime.startsWith("video/") || mime.startsWith("audio/"))) {
-                    mediaTrackIndex = i;
-                    break;
+                    if (mediaTrackIndex < 0) {
+                        mediaTrackIndex = i;
+                    }
+                    if (format.containsKey(MediaFormat.KEY_DURATION)) {
+                        hasDuration = true;
+                        if (format.getLong(MediaFormat.KEY_DURATION) > 0L) {
+                            hasPositiveDuration = true;
+                        }
+                    }
                 }
             }
             if (mediaTrackIndex < 0) {
                 throw new IOException("download output is not a valid media file");
             }
+            if (hasDuration && !hasPositiveDuration) {
+                throw new IOException("download output media duration is invalid");
+            }
             extractor.selectTrack(mediaTrackIndex);
             ByteBuffer sampleBuffer = ByteBuffer.allocate(64 * 1024);
             if (extractor.readSampleData(sampleBuffer, 0) <= 0) {
                 throw new IOException("download output media track is unreadable");
+            }
+            if (hasPositiveDuration) {
+                callback.onStatus(context.getString(R.string.engine_media_duration_validated));
             }
             callback.onStatus(context.getString(R.string.engine_media_validated));
         } catch (IOException error) {
@@ -1133,12 +1202,13 @@ final class DownloadEngine {
         final List<DashSegment> segments;
         final int audioTrackCount;
         final String audioSummary;
+        final DashPlan audioPlan;
 
         DashPlan(String manifestUrl, String representationId, int bandwidth, int width, int height, String codecs, boolean videoLike, String initUrl, String initRange, List<DashSegment> segments) {
-            this(manifestUrl, representationId, bandwidth, width, height, codecs, videoLike, initUrl, initRange, segments, 0, "");
+            this(manifestUrl, representationId, bandwidth, width, height, codecs, videoLike, initUrl, initRange, segments, 0, "", null);
         }
 
-        DashPlan(String manifestUrl, String representationId, int bandwidth, int width, int height, String codecs, boolean videoLike, String initUrl, String initRange, List<DashSegment> segments, int audioTrackCount, String audioSummary) {
+        DashPlan(String manifestUrl, String representationId, int bandwidth, int width, int height, String codecs, boolean videoLike, String initUrl, String initRange, List<DashSegment> segments, int audioTrackCount, String audioSummary, DashPlan audioPlan) {
             this.manifestUrl = manifestUrl;
             this.representationId = representationId;
             this.bandwidth = bandwidth;
@@ -1151,10 +1221,11 @@ final class DownloadEngine {
             this.segments = segments;
             this.audioTrackCount = Math.max(0, audioTrackCount);
             this.audioSummary = audioSummary == null ? "" : audioSummary;
+            this.audioPlan = audioPlan;
         }
 
-        DashPlan withAudioTracks(int audioTrackCount, String audioSummary) {
-            return new DashPlan(manifestUrl, representationId, bandwidth, width, height, codecs, videoLike, initUrl, initRange, segments, audioTrackCount, audioSummary);
+        DashPlan withAudioTracks(int audioTrackCount, String audioSummary, DashPlan audioPlan) {
+            return new DashPlan(manifestUrl, representationId, bandwidth, width, height, codecs, videoLike, initUrl, initRange, segments, audioTrackCount, audioSummary, audioPlan);
         }
     }
 
@@ -1312,24 +1383,49 @@ final class DownloadEngine {
             String periodDuration = firstNonEmpty(attrOrEmpty(root, "mediaPresentationDuration"), attrOrEmpty(firstElement(root, "Period"), "duration"));
             String mpdBase = joinUrl(rawUrl, firstBaseUrl(root));
             DashPlan best = null;
+            DashPlan bestAudio = null;
             int audioTrackCount = 0;
             List<String> audioSummaries = new ArrayList<>();
             for (Element period : childElements(root, "Period")) {
                 String periodBase = joinUrl(mpdBase, firstBaseUrl(period));
                 for (Element adaptation : childElements(period, "AdaptationSet")) {
+                    String adaptationBase = joinUrl(periodBase, firstBaseUrl(adaptation));
                     if (isDashAudioElement(adaptation)) {
-                        audioTrackCount += countDashAudioRepresentations(adaptation);
-                        addDashAudioSummary(audioSummaries, adaptation, null);
+                        List<Element> representations = childElements(adaptation, "Representation");
+                        audioTrackCount += Math.max(1, representations.size());
+                        if (representations.isEmpty()) {
+                            addDashAudioSummary(audioSummaries, adaptation, null);
+                        }
+                        for (Element representation : representations) {
+                            addDashAudioSummary(audioSummaries, adaptation, representation);
+                            DashPlan candidate = parseDashRepresentation(
+                                    rawUrl,
+                                    adaptation,
+                                    representation,
+                                    joinUrl(adaptationBase, firstBaseUrl(representation)),
+                                    periodDuration);
+                            if (candidate != null && (bestAudio == null || compareDashAudioPlan(candidate, bestAudio) > 0)) {
+                                bestAudio = candidate;
+                            }
+                        }
                         continue;
                     }
                     if (isDashNonVideoElement(adaptation)) {
                         continue;
                     }
-                    String adaptationBase = joinUrl(periodBase, firstBaseUrl(adaptation));
                     for (Element representation : childElements(adaptation, "Representation")) {
                         if (isDashAudioElement(representation)) {
                             audioTrackCount++;
                             addDashAudioSummary(audioSummaries, adaptation, representation);
+                            DashPlan candidate = parseDashRepresentation(
+                                    rawUrl,
+                                    adaptation,
+                                    representation,
+                                    joinUrl(adaptationBase, firstBaseUrl(representation)),
+                                    periodDuration);
+                            if (candidate != null && (bestAudio == null || compareDashAudioPlan(candidate, bestAudio) > 0)) {
+                                bestAudio = candidate;
+                            }
                             continue;
                         }
                         if (isDashNonVideoElement(representation)) {
@@ -1350,7 +1446,7 @@ final class DownloadEngine {
             if (best == null) {
                 throw new IOException("unsupported DASH MPD structure");
             }
-            return best.withAudioTracks(audioTrackCount, joinLimitedParts(audioSummaries, 3));
+            return best.withAudioTracks(audioTrackCount, joinLimitedParts(audioSummaries, 3), bestAudio);
         } catch (IOException error) {
             throw error;
         } catch (Exception error) {
@@ -1618,6 +1714,14 @@ final class DownloadEngine {
             return bandwidthCompare;
         }
         return Integer.compare(left == null ? 0 : left.width, right == null ? 0 : right.width);
+    }
+
+    private int compareDashAudioPlan(DashPlan left, DashPlan right) {
+        int bandwidthCompare = Integer.compare(left == null ? 0 : left.bandwidth, right == null ? 0 : right.bandwidth);
+        if (bandwidthCompare != 0) {
+            return bandwidthCompare;
+        }
+        return Integer.compare(left == null ? 0 : left.segments.size(), right == null ? 0 : right.segments.size());
     }
 
     private String dashPlanDescription(DashPlan plan) {

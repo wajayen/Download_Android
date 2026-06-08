@@ -7,9 +7,12 @@ This Android app is a native port track for the desktop downloader in `downloade
 - APK build pipeline with local JDK, Android SDK, and Gradle.
 - Native Android UI for entering or sharing a URL.
 - Android-friendly main screen with a left hamburger menu, right overflow settings menu, and download queue centered as the primary content.
+- Overflow settings now hides the system-default and four-language selector entries and instead exposes a download-directory picker backed by Android's system folder selection.
+- Completed outputs now export to the user-selected download directory when one is configured, falling back to public Downloads/AI Test Downloader otherwise.
+- Completed-output export now falls back to public Downloads/AI Test Downloader if the selected download directory becomes unavailable or its persisted Android permission is revoked.
 - Main UI now uses a calm Japanese-inspired Android layout with pale surfaces, subtle borders, the new-download controls above the download queue, and large touch-friendly controls.
 - New-download controls now list the latest three completed videos from the app download directory above the playback controls, allowing one to be selected and opened in an external player.
-- Completed-video playback now lists only playable files that still exist in the app download directory or the public Downloads/AI Test Downloader directory, shows filenames without extensions or numbering, and uses right-side up/down controls to select beyond the three visible rows without adding vertical height.
+- Completed-video playback now lists only playable files that still exist in the app download directory, the selected download directory, or the public Downloads/AI Test Downloader directory, shows filenames without extensions or numbering, and uses right-side up/down controls to select beyond the three visible rows without adding vertical height.
 - Completed-video playback controls now have English, Traditional Chinese, Simplified Chinese, and Japanese dictionary entries instead of falling back to mixed UI text.
 - Completed-video playback now refreshes when returning to the app and includes completed files exported to public Downloads/AI Test Downloader, using scoped read-only content URIs for playback.
 - Completed-video playback no longer uses MediaStore history for its selectable list, so deleted files that remain in Android media indexes are not shown as playable choices.
@@ -99,6 +102,11 @@ This Android app is a native port track for the desktop downloader in `downloade
 - MacCMS-style `player_data`, `player_aaaa`, and `player` JavaScript object parsing.
 - MacCMS `encrypt=1` URL decode and `encrypt=2` base64 URL decode for player URLs.
 - Player source arrays and common MovieFFM/Gimy/Xiaoya episode/play-page links are extracted as resolver candidates.
+- MovieFFM external source extraction now detects `videos` blocks, download links, shortcode URLs, `videourl`, and iframe JSON entries for Mixdrop, Dood, and Evoload style hosts, including Mixdrop `/f/` to `/e/` playback normalization.
+- Mixdrop external player pages now extract `wurl` script media fields, improving recursive MovieFFM external-source resolution.
+- Gimy `player_data` now builds desktop-style `aiplayer` and `play.gimy01.tv` iframe candidates from `url`, `from`, and `link_next`, improving deep Gimy play-page traversal before generic media extraction.
+- XiaoyaKankan play-page extraction now scans links, data attributes, and script fields for `/vod/play/id/` candidates before recursive media resolution.
+- XiaoyaKankan `.com` `var pp` line data is now parsed into same-episode media candidates, using the `vod` query value to select matching line entries when present.
 - Anime1 page parser resolves `data-apireq` through the Anime1 API and extracts direct media URLs.
 - Ani Gamer resolver support extracts `animeVideo.php?sn=...` episode links and `animefun.videoSn` page candidates.
 - Custom HTTP downloader instead of Android `DownloadManager`.
@@ -131,8 +139,10 @@ This Android app is a native port track for the desktop downloader in `downloade
 - DASH representation selection now reads representation or adaptation `width`, `height`, and `codecs`, preferring higher resolution before bandwidth and reporting the selected representation details.
 - DASH parsing now honors MPD, Period, AdaptationSet, and Representation `BaseURL` hierarchy and skips audio-only AdaptationSet or Representation candidates before selecting the video stream.
 - DASH representation selection now also skips text/subtitle/image tracks and explicitly prefers video-like representations by MIME/content type, codecs, or dimensions.
-- DASH manifest parsing now detects separate audio tracks and reports that Android currently downloads the selected video representation while audio muxing remains pending, making the largest FFmpeg/ffprobe parity gap visible during downloads.
+- DASH manifest parsing now detects separate audio tracks, selects the best audio representation, downloads it after the video representation, and attempts an Android-native MediaMuxer MP4 mux while falling back to video-only output if the device cannot mux the tracks.
+- DASH video/audio track downloads now propagate cancellation correctly so partial files are preserved without being replaced, validated, exported, or marked complete.
 - Completed HTTP, HLS-remuxed, and DASH video outputs now run an Android-native media validation pass before being marked done, rejecting empty or unreadable MP4/M4V/WebM/MKV/MOV containers while keeping TS validation conservative to avoid device-specific false failures.
+- Android-native media validation now checks positive media duration when the device exposes duration metadata, rejecting zero-duration outputs while leaving formats without duration metadata to sample-read validation.
 - Android-native media validation now also reads a sample from the first detected audio/video track, catching files that expose an empty track but cannot actually provide playable media data.
 - Direct HTTP downloads now reject obvious non-media response types such as HTML, JSON, XML, or plain text before writing the output file, reducing false successes from error pages saved as videos.
 - HLS and DASH byte downloads now share the same non-media `Content-Type` rejection for segments, init maps, keys, and fragmented MP4 chunks, reducing playlist corruption from CDN error pages.
@@ -147,15 +157,15 @@ This Android app is a native port track for the desktop downloader in `downloade
 
 ## Not Yet Ported From Desktop
 
-- Full deep per-site parsers for MovieFFM, Gimy, XiaoyaKankan, YFSP, iQIYI, YouTube, Dailymotion, Bilibili, Ikanbot, social platforms, and adult/JAV sites; NNYY, 3KOR, DramaSQ, Olevod/OleHDTV, Thanju, 99iTV, and 777TV currently have MacCMS-like generic traversal, while Dailymotion/YouTube/Bilibili/iQIYI/Ikanbot/YFSP/social platforms and the first adult/JAV cluster currently have site detection and generic stream/play-page extraction only.
+- Full deep per-site parsers for MovieFFM, Gimy, XiaoyaKankan, YFSP, iQIYI, YouTube, Dailymotion, Bilibili, Ikanbot, social platforms, and adult/JAV sites; MovieFFM now has first external-host source extraction plus Mixdrop `wurl` media extraction, Gimy now has first desktop-style iframe construction from `player_data`, and XiaoyaKankan now has broader play-page plus `var pp` media candidate extraction, while NNYY, 3KOR, DramaSQ, Olevod/OleHDTV, Thanju, 99iTV, and 777TV currently have MacCMS-like generic traversal, and Dailymotion/YouTube/Bilibili/iQIYI/Ikanbot/YFSP/social platforms plus the first adult/JAV cluster currently have site detection and generic stream/play-page extraction only.
 - yt-dlp integration and plugin support.
-- ffmpeg/ffprobe based remux, transcode, duration validation, multi-track DASH audio/video muxing, and fallback routing.
+- ffmpeg/ffprobe based remux, transcode, deeper duration validation, broad fallback routing, and full multi-audio/multi-period DASH mux parity.
 - Full browser session reuse and impersonation behavior equivalent to `curl_cffi` and desktop browser workflows; pasted Cookie/Referer plus selected request headers, basic Referer/Origin propagation, and persistent app cookie storage are already ported.
 - Full desktop search result review UI, including rich alternate-site fallback prompts; Android now exposes source candidates from the hamburger menu as a separate review panel so the download queue remains file/progress only.
 
 ## Next Porting Order
 
-1. Complete FFmpeg/ffprobe parity on Android: multi-track DASH audio/video muxing, unsupported-remux fallback, transcode fallback, and duration/media validation.
+1. Complete FFmpeg/ffprobe parity on Android: broader DASH mux compatibility, unsupported-remux fallback, transcode fallback, and deeper duration/media validation.
 2. Port deep per-site parsers in high-value clusters, starting with MovieFFM/Gimy/Xiaoya and JAV/adult sites that currently rely on generic traversal.
 3. Add yt-dlp/plugin-equivalent fallback strategy or a constrained Android replacement for unsupported platforms.
 4. Expand desktop-style search result review with richer alternate-site fallback prompts while keeping the queue display file/progress-only.
