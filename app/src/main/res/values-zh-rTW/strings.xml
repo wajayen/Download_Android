@@ -9,6 +9,7 @@
     <string name="action_open_settings">開啟設定</string>
     <string name="section_download_queue">下載隊列</string>
     <string name="section_new_download">新增下載</string>
+    <string name="section_source_candidates">來源候選</string>
     <string name="label_language">語言</string>
     <string name="language_system">跟隨系統</string>
     <string name="language_english">English</string>
@@ -20,7 +21,9 @@
     <string name="action_refresh">重新整理</string>
     <string name="action_retry_failed">重試失敗項目</string>
     <string name="action_try_next_source">嘗試下一個來源</string>
+    <string name="action_source_candidates">來源候選</string>
     <string name="action_queue_selected_source">加入選取來源</string>
+    <string name="action_copy_source_detail">複製來源資訊</string>
     <string name="action_clear_finished">清除已完成</string>
     <string name="action_export_logs">匯出記錄</string>
     <string name="status_idle">目前沒有下載佇列</string>
@@ -33,6 +36,7 @@
     <string name="toast_select_source_first">請先選擇來源候選</string>
     <string name="toast_selected_source_unavailable">選取的來源已不可用</string>
     <string name="toast_cleared_finished">已清除 %1$d 個完成項目</string>
+    <string name="toast_source_detail_copied">來源資訊已複製</string>
     <string name="toast_logs_exported">記錄已匯出</string>
     <string name="toast_log_export_failed">記錄匯出失敗</string>
     <string name="status_download_queued">已加入下載佇列\n%1$s</string>
@@ -47,6 +51,9 @@
     <string name="status_logs_exported">記錄已匯出\n%1$s\n%2$s</string>
     <string name="status_log_export_failed">記錄匯出失敗\n%1$s\n%2$s</string>
     <string name="source_none">沒有已解析的來源候選</string>
+    <string name="source_detail_empty">尚未選取來源</string>
+    <string name="source_detail_format">網址：%1$s</string>
+    <string name="source_detail_with_referer_format">網址：%1$s\n來源頁：%2$s</string>
     <string name="task_message_queued">已排入佇列</string>
     <string name="task_message_recovered">服務重啟後已恢復佇列</string>
     <string name="task_message_running">下載中</string>
@@ -113,5 +120,9 @@
     <string name="search_candidate_media_fallback">已解析的媒體備援</string>
     <string name="search_candidate_alternate">其他搜尋結果：%1$s</string>
     <string name="search_candidate_previous">先前搜尋結果：%1$s</string>
+    <string name="action_play_selected_video">&#25773;&#25918;&#36984;&#21462;&#24433;&#29255;</string>
+    <string name="toast_no_completed_video">&#27794;&#26377;&#21487;&#25773;&#25918;&#30340;&#24050;&#23436;&#25104;&#24433;&#29255;</string>
+    <string name="toast_playback_unavailable">&#28961;&#27861;&#21855;&#21205;&#25773;&#25918;&#22120;</string>
+    <string name="completed_video_none">&#27794;&#26377;&#24050;&#23436;&#25104;&#30340;&#24433;&#29255;</string>
     <string name="task_message_playback_unavailable">&#28961;&#27861;&#21855;&#21205;&#25773;&#25918;&#22120;&#65292;&#19979;&#36617;&#26371;&#32380;&#32396;</string>
 </resources>

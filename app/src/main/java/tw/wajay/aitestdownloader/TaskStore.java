@@ -29,12 +29,18 @@ final class TaskStore {
         final String taskId;
         final int index;
         final String url;
+        final String referer;
         final String label;
 
         CandidateOption(String taskId, int index, String url, String label) {
+            this(taskId, index, url, "", label);
+        }
+
+        CandidateOption(String taskId, int index, String url, String referer, String label) {
             this.taskId = taskId;
             this.index = index;
             this.url = url;
+            this.referer = referer == null ? "" : referer;
             this.label = label;
         }
 
@@ -301,6 +307,8 @@ final class TaskStore {
             String taskId = task.optString("id", "");
             String current = task.optString("resolvedUrl", "");
             String sourceSite = task.optString("sourceSite", "");
+            String existingReferer = task.optString("referer", "");
+            String previousUrl = task.optString("url", "");
             for (int c = 0; c < candidateUrls.length(); c++) {
                 String url = candidateUrls.optString(c, "");
                 if (url.isEmpty()) {
@@ -308,7 +316,8 @@ final class TaskStore {
                 }
                 String marker = url.equals(current) ? text(R.string.source_current_marker) : "";
                 String resolverLabel = candidateLabels == null ? "" : candidateLabels.optString(c, "");
-                options.add(new CandidateOption(taskId, c, url, candidateLabel(c + 1, marker, sourceSite, url, resolverLabel)));
+                String referer = candidateRefererAt(task, c, existingReferer, previousUrl);
+                options.add(new CandidateOption(taskId, c, url, referer, candidateLabel(c + 1, marker, sourceSite, url, resolverLabel)));
             }
             if (!options.isEmpty()) {
                 return options;

@@ -4,11 +4,13 @@
     <string name="hint_url">URL, video title, code, or Copy as cURL text&#10;curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...</string>
     <string name="hint_file_name">File name (optional)</string>
     <string name="action_download">Download</string>
+    <string name="action_play_selected_video">Play selected video</string>
     <string name="action_play_after_50mb">Play after 50 MB</string>
     <string name="action_open_menu">Open menu</string>
     <string name="action_open_settings">Open settings</string>
     <string name="section_download_queue">Download Queue</string>
     <string name="section_new_download">New Download</string>
+    <string name="section_source_candidates">Source Candidates</string>
     <string name="label_language">Language</string>
     <string name="language_system">System default</string>
     <string name="language_english">English</string>
@@ -20,7 +22,9 @@
     <string name="action_refresh">Refresh</string>
     <string name="action_retry_failed">Retry Failed</string>
     <string name="action_try_next_source">Try Next Source</string>
+    <string name="action_source_candidates">Source Candidates</string>
     <string name="action_queue_selected_source">Queue Selected Source</string>
+    <string name="action_copy_source_detail">Copy Source Detail</string>
     <string name="action_clear_finished">Clear Finished</string>
     <string name="action_export_logs">Export Logs</string>
     <string name="status_idle">No downloads queued</string>
@@ -33,8 +37,12 @@
     <string name="toast_select_source_first">Select a source candidate first</string>
     <string name="toast_selected_source_unavailable">Selected source is no longer available</string>
     <string name="toast_cleared_finished">Cleared %1$d finished task(s)</string>
+    <string name="toast_source_detail_copied">Source detail copied</string>
     <string name="toast_logs_exported">Logs exported</string>
     <string name="toast_log_export_failed">Log export failed</string>
+    <string name="toast_no_completed_video">No completed video to play</string>
+    <string name="toast_playback_unavailable">Could not start a player</string>
+    <string name="completed_video_none">No completed videos</string>
     <string name="status_download_queued">Download queued\n%1$s</string>
     <string name="status_search_queued">Search queued\n%1$s</string>
     <string name="status_download_play_after_queued">Download queued; playback will start after 50 MB\n%1$s</string>
@@ -47,6 +55,9 @@
     <string name="status_logs_exported">Logs exported\n%1$s\n%2$s</string>
     <string name="status_log_export_failed">Log export failed\n%1$s\n%2$s</string>
     <string name="source_none">No resolved source candidates</string>
+    <string name="source_detail_empty">No source selected</string>
+    <string name="source_detail_format">URL: %1$s</string>
+    <string name="source_detail_with_referer_format">URL: %1$s\nReferer: %2$s</string>
     <string name="task_message_queued">Queued</string>
     <string name="task_message_recovered">Recovered after service restart</string>
     <string name="task_message_running">Downloading</string>

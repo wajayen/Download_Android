@@ -13,6 +13,8 @@ import java.io.File;
 import java.io.FileNotFoundException;
 
 public final class PartialFileProvider extends ContentProvider {
+    private static final String PUBLIC_SUBDIR = "AI Test Downloader";
+
     static Uri contentUriFor(android.content.Context context, File file) {
         return contentUriFor(context, file, playableName(file.getName()));
     }
@@ -22,12 +24,15 @@ public final class PartialFileProvider extends ContentProvider {
         if (cleanDisplayName.isEmpty()) {
             cleanDisplayName = playableName(file.getName());
         }
-        return new Uri.Builder()
+        Uri.Builder builder = new Uri.Builder()
                 .scheme("content")
                 .authority(context.getPackageName() + ".partialfileprovider")
                 .appendPath(cleanDisplayName)
-                .appendQueryParameter("file", file.getName())
-                .build();
+                .appendQueryParameter("file", file.getName());
+        if (isPublicDownloadFile(file)) {
+            builder.appendQueryParameter("scope", "public");
+        }
+        return builder.build();
     }
 
     @Override
@@ -104,7 +109,9 @@ public final class PartialFileProvider extends ContentProvider {
             throw new FileNotFoundException("missing context");
         }
         File dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
-        if (dir == null) {
+        if ("public".equals(uri == null ? "" : uri.getQueryParameter("scope"))) {
+            dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), PUBLIC_SUBDIR);
+        } else if (dir == null) {
             dir = context.getFilesDir();
         }
         return new File(dir, name);
@@ -122,5 +129,18 @@ public final class PartialFileProvider extends ContentProvider {
             clean = clean.substring(0, clean.length() - 5);
         }
         return clean.isEmpty() ? "preview.mp4" : clean;
+    }
+
+    private static boolean isPublicDownloadFile(File file) {
+        if (file == null) {
+            return false;
+        }
+        try {
+            File publicDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), PUBLIC_SUBDIR);
+            String parent = file.getParentFile() == null ? "" : file.getParentFile().getCanonicalPath();
+            return parent.equals(publicDir.getCanonicalPath());
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 }

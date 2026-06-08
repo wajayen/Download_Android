@@ -8,7 +8,16 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Native Android UI for entering or sharing a URL.
 - Android-friendly main screen with a left hamburger menu, right overflow settings menu, and download queue centered as the primary content.
 - Main UI now uses a calm Japanese-inspired Android layout with pale surfaces, subtle borders, the new-download controls above the download queue, and large touch-friendly controls.
+- New-download controls now list the latest three completed videos from the app download directory above the playback controls, allowing one to be selected and opened in an external player.
+- Completed-video playback controls now have English, Traditional Chinese, Simplified Chinese, and Japanese dictionary entries instead of falling back to mixed UI text.
+- Completed-video playback now refreshes when returning to the app and includes completed files exported to public Downloads/AI Test Downloader, using scoped read-only content URIs for playback.
+- Completed-video playback now queries public Downloads/AI Test Downloader through MediaStore on Android 10+ and plays those entries by MediaStore URI, avoiding scoped-storage file path issues.
+- Completed-video playback now requests Android 13+ video media permission so public exported videos are visible in the recent completed-video list when the platform requires it.
+- Completed-video playback now refreshes the recent completed-video list immediately after notification, legacy storage, or Android 13+ video media permissions return.
 - Download queue now shows only unfinished files with their current progress, hides resolved-source metadata from the queue area, and clears completed tasks on app/service startup.
+- Source-candidate review now shows the selected candidate's full URL in the hamburger-menu source panel before queueing that source.
+- Source-candidate review now also shows the selected candidate's Referer/source page when one is available, matching protected-site download diagnostics more closely.
+- Source-candidate review can now copy the selected URL and Referer details to the Android clipboard for external inspection or troubleshooting.
 - Android UI now includes a Play after 50 MB action below Download; selected tasks keep downloading to completion while the partial file is opened in an external player once it reaches 50 MB.
 - Play after 50 MB now has dedicated multi-download queue messaging and a playback-started notification while the download continues.
 - Play after 50 MB now persists its playback-attempt state so recovered or restarted tasks do not repeatedly relaunch the external player.
@@ -123,11 +132,11 @@ This Android app is a native port track for the desktop downloader in `downloade
 - yt-dlp integration and plugin support.
 - ffmpeg/ffprobe based remux, transcode, duration validation, multi-track DASH audio/video muxing, and fallback routing.
 - Full browser session reuse and impersonation behavior equivalent to `curl_cffi` and desktop browser workflows; pasted Cookie/Referer plus selected request headers, basic Referer/Origin propagation, and persistent app cookie storage are already ported.
-- Alternate-site fallback prompts and full desktop search result review UI.
+- Full desktop search result review UI, including rich alternate-site fallback prompts; Android now exposes source candidates from the hamburger menu as a separate review panel so the download queue remains file/progress only.
 
 ## Next Porting Order
 
 1. Extend the Android-native remux path and evaluate FFmpegKit or equivalent fallback for formats MediaMuxer cannot handle.
 2. Add structured per-site episode/source metadata for major individual sites.
 3. Port additional site parsers in clusters, starting with JAV/adult sites.
-4. Search and alternate-site fallback.
+4. Continue expanding search result review and alternate-site fallback.

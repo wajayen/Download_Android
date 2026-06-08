@@ -9,6 +9,7 @@
     <string name="action_open_settings">設定を開く</string>
     <string name="section_download_queue">ダウンロードキュー</string>
     <string name="section_new_download">新規ダウンロード</string>
+    <string name="section_source_candidates">ソース候補</string>
     <string name="label_language">言語</string>
     <string name="language_system">システム設定</string>
     <string name="language_english">English</string>
@@ -20,7 +21,9 @@
     <string name="action_refresh">更新</string>
     <string name="action_retry_failed">失敗項目を再試行</string>
     <string name="action_try_next_source">次のソースを試す</string>
+    <string name="action_source_candidates">ソース候補</string>
     <string name="action_queue_selected_source">選択したソースを追加</string>
+    <string name="action_copy_source_detail">ソース情報をコピー</string>
     <string name="action_clear_finished">完了項目をクリア</string>
     <string name="action_export_logs">ログを書き出す</string>
     <string name="status_idle">ダウンロード待ちはありません</string>
@@ -33,6 +36,7 @@
     <string name="toast_select_source_first">先にソース候補を選択してください</string>
     <string name="toast_selected_source_unavailable">選択したソースは利用できません</string>
     <string name="toast_cleared_finished">完了項目を %1$d 件クリアしました</string>
+    <string name="toast_source_detail_copied">ソース情報をコピーしました</string>
     <string name="toast_logs_exported">ログを書き出しました</string>
     <string name="toast_log_export_failed">ログの書き出しに失敗しました</string>
     <string name="status_download_queued">ダウンロード待ちに追加しました\n%1$s</string>
@@ -47,6 +51,9 @@
     <string name="status_logs_exported">ログを書き出しました\n%1$s\n%2$s</string>
     <string name="status_log_export_failed">ログの書き出しに失敗しました\n%1$s\n%2$s</string>
     <string name="source_none">解析済みソース候補はありません</string>
+    <string name="source_detail_empty">ソースが選択されていません</string>
+    <string name="source_detail_format">URL：%1$s</string>
+    <string name="source_detail_with_referer_format">URL：%1$s\nReferer：%2$s</string>
     <string name="task_message_queued">待機中</string>
     <string name="task_message_recovered">サービス再起動後にキューへ戻しました</string>
     <string name="task_message_running">ダウンロード中</string>
@@ -113,5 +120,9 @@
     <string name="search_candidate_media_fallback">解析済みメディアの予備候補</string>
     <string name="search_candidate_alternate">ほかの検索結果：%1$s</string>
     <string name="search_candidate_previous">以前の検索結果：%1$s</string>
+    <string name="action_play_selected_video">&#36984;&#25246;&#12375;&#12383;&#21205;&#30011;&#12434;&#20877;&#29983;</string>
+    <string name="toast_no_completed_video">&#20877;&#29983;&#12391;&#12365;&#12427;&#23436;&#20102;&#28168;&#12415;&#21205;&#30011;&#12364;&#12354;&#12426;&#12414;&#12379;&#12435;</string>
+    <string name="toast_playback_unavailable">&#12503;&#12524;&#12540;&#12516;&#12540;&#12434;&#36215;&#21205;&#12391;&#12365;&#12414;&#12379;&#12435;</string>
+    <string name="completed_video_none">&#23436;&#20102;&#28168;&#12415;&#21205;&#30011;&#12399;&#12354;&#12426;&#12414;&#12379;&#12435;</string>
     <string name="task_message_playback_unavailable">&#12503;&#12524;&#12540;&#12516;&#12540;&#12434;&#36215;&#21205;&#12391;&#12365;&#12414;&#12379;&#12435;&#12290;&#12480;&#12454;&#12531;&#12525;&#12540;&#12489;&#12399;&#32154;&#34892;&#12375;&#12414;&#12377;</string>
 </resources>
