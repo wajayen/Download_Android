@@ -869,6 +869,9 @@ final class DownloadEngine {
         boolean append = startIndex > 0 && part.exists();
 
         callback.onStatus(context.getString(R.string.engine_dash_representation, dashPlanDescription(plan)));
+        if (plan.audioTrackCount > 0) {
+            callback.onStatus(context.getString(R.string.engine_dash_video_only_audio_pending, dashAudioSummary(plan)));
+        }
         try (FileOutputStream fos = new FileOutputStream(part, append);
             BufferedOutputStream outputStream = new BufferedOutputStream(fos)) {
             if (startIndex == 0) {
@@ -1039,8 +1042,14 @@ final class DownloadEngine {
         final String initUrl;
         final String initRange;
         final List<DashSegment> segments;
+        final int audioTrackCount;
+        final String audioSummary;
 
         DashPlan(String manifestUrl, String representationId, int bandwidth, int width, int height, String codecs, boolean videoLike, String initUrl, String initRange, List<DashSegment> segments) {
+            this(manifestUrl, representationId, bandwidth, width, height, codecs, videoLike, initUrl, initRange, segments, 0, "");
+        }
+
+        DashPlan(String manifestUrl, String representationId, int bandwidth, int width, int height, String codecs, boolean videoLike, String initUrl, String initRange, List<DashSegment> segments, int audioTrackCount, String audioSummary) {
             this.manifestUrl = manifestUrl;
             this.representationId = representationId;
             this.bandwidth = bandwidth;
@@ -1051,6 +1060,12 @@ final class DownloadEngine {
             this.initUrl = initUrl;
             this.initRange = initRange;
             this.segments = segments;
+            this.audioTrackCount = Math.max(0, audioTrackCount);
+            this.audioSummary = audioSummary == null ? "" : audioSummary;
+        }
+
+        DashPlan withAudioTracks(int audioTrackCount, String audioSummary) {
+            return new DashPlan(manifestUrl, representationId, bandwidth, width, height, codecs, videoLike, initUrl, initRange, segments, audioTrackCount, audioSummary);
         }
     }
 
@@ -1208,14 +1223,26 @@ final class DownloadEngine {
             String periodDuration = firstNonEmpty(attrOrEmpty(root, "mediaPresentationDuration"), attrOrEmpty(firstElement(root, "Period"), "duration"));
             String mpdBase = joinUrl(rawUrl, firstBaseUrl(root));
             DashPlan best = null;
+            int audioTrackCount = 0;
+            List<String> audioSummaries = new ArrayList<>();
             for (Element period : childElements(root, "Period")) {
                 String periodBase = joinUrl(mpdBase, firstBaseUrl(period));
                 for (Element adaptation : childElements(period, "AdaptationSet")) {
+                    if (isDashAudioElement(adaptation)) {
+                        audioTrackCount += countDashAudioRepresentations(adaptation);
+                        addDashAudioSummary(audioSummaries, adaptation, null);
+                        continue;
+                    }
                     if (isDashNonVideoElement(adaptation)) {
                         continue;
                     }
                     String adaptationBase = joinUrl(periodBase, firstBaseUrl(adaptation));
                     for (Element representation : childElements(adaptation, "Representation")) {
+                        if (isDashAudioElement(representation)) {
+                            audioTrackCount++;
+                            addDashAudioSummary(audioSummaries, adaptation, representation);
+                            continue;
+                        }
                         if (isDashNonVideoElement(representation)) {
                             continue;
                         }
@@ -1234,7 +1261,7 @@ final class DownloadEngine {
             if (best == null) {
                 throw new IOException("unsupported DASH MPD structure");
             }
-            return best;
+            return best.withAudioTracks(audioTrackCount, joinLimitedParts(audioSummaries, 3));
         } catch (IOException error) {
             throw error;
         } catch (Exception error) {
@@ -1272,6 +1299,66 @@ final class DownloadEngine {
                 || codecs.startsWith("opus")
                 || codecs.startsWith("stpp")
                 || codecs.startsWith("wvtt");
+    }
+
+    private boolean isDashAudioElement(Element element) {
+        String mediaType = firstNonEmpty(attrOrEmpty(element, "mimeType"), attrOrEmpty(element, "contentType")).toLowerCase(Locale.US);
+        String codecs = attrOrEmpty(element, "codecs").toLowerCase(Locale.US);
+        return mediaType.contains("audio")
+                || codecs.startsWith("mp4a")
+                || codecs.startsWith("ac-3")
+                || codecs.startsWith("ec-3")
+                || codecs.startsWith("opus");
+    }
+
+    private int countDashAudioRepresentations(Element adaptation) {
+        List<Element> representations = childElements(adaptation, "Representation");
+        return Math.max(1, representations.size());
+    }
+
+    private void addDashAudioSummary(List<String> summaries, Element adaptation, Element representation) {
+        String id = representation == null ? attrOrEmpty(adaptation, "id") : firstNonEmpty(attrOrEmpty(representation, "id"), attrOrEmpty(adaptation, "id"));
+        String bandwidth = representation == null ? attrOrEmpty(adaptation, "bandwidth") : firstNonEmpty(attrOrEmpty(representation, "bandwidth"), attrOrEmpty(adaptation, "bandwidth"));
+        String codecs = representation == null ? attrOrEmpty(adaptation, "codecs") : firstNonEmpty(attrOrEmpty(representation, "codecs"), attrOrEmpty(adaptation, "codecs"));
+        List<String> parts = new ArrayList<>();
+        if (!id.isEmpty()) {
+            parts.add(id);
+        }
+        if (!bandwidth.isEmpty()) {
+            parts.add(bandwidth + " bps");
+        }
+        if (!codecs.isEmpty()) {
+            parts.add(codecs);
+        }
+        String summary = parts.isEmpty() ? "audio" : joinParts(parts);
+        if (!summaries.contains(summary)) {
+            summaries.add(summary);
+        }
+    }
+
+    private String dashAudioSummary(DashPlan plan) {
+        if (plan == null || plan.audioTrackCount <= 0) {
+            return "";
+        }
+        if (!plan.audioSummary.isEmpty()) {
+            return plan.audioSummary;
+        }
+        return String.valueOf(plan.audioTrackCount);
+    }
+
+    private String joinLimitedParts(List<String> parts, int limit) {
+        if (parts == null || parts.isEmpty()) {
+            return "";
+        }
+        List<String> limited = new ArrayList<>();
+        int count = Math.min(Math.max(1, limit), parts.size());
+        for (int i = 0; i < count; i++) {
+            limited.add(parts.get(i));
+        }
+        if (parts.size() > count) {
+            limited.add("+" + (parts.size() - count));
+        }
+        return joinParts(limited);
     }
 
     private boolean isDashVideoLike(Element adaptation, Element representation, int width, int height, String codecs) {

@@ -9,6 +9,7 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Android-friendly main screen with a left hamburger menu, right overflow settings menu, and download queue centered as the primary content.
 - Main UI now uses a calm Japanese-inspired Android layout with pale surfaces, subtle borders, the new-download controls above the download queue, and large touch-friendly controls.
 - New-download controls now list the latest three completed videos from the app download directory above the playback controls, allowing one to be selected and opened in an external player.
+- Completed-video playback now lists only playable files that still exist in the download directory or can be opened through MediaStore, shows filenames without extensions or numbering, and uses up/down controls to select beyond the three visible rows.
 - Completed-video playback controls now have English, Traditional Chinese, Simplified Chinese, and Japanese dictionary entries instead of falling back to mixed UI text.
 - Completed-video playback now refreshes when returning to the app and includes completed files exported to public Downloads/AI Test Downloader, using scoped read-only content URIs for playback.
 - Completed-video playback now queries public Downloads/AI Test Downloader through MediaStore on Android 10+ and plays those entries by MediaStore URI, avoiding scoped-storage file path issues.
@@ -18,6 +19,14 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Source-candidate review now shows the selected candidate's full URL in the hamburger-menu source panel before queueing that source.
 - Source-candidate review now also shows the selected candidate's Referer/source page when one is available, matching protected-site download diagnostics more closely.
 - Source-candidate review can now copy the selected URL and Referer details to the Android clipboard for external inspection or troubleshooting.
+- Source-candidate review can now copy the complete candidate list with labels, URLs, and Referer details for batch comparison.
+- Source-candidate review can now share the complete candidate list through Android's standard share sheet.
+- Source-candidate review can now share the selected URL and Referer details through Android's standard share sheet.
+- Source-candidate review can now copy the selected candidate as a `curl -L` command, including a Referer header when available.
+- Source-candidate review can now share the generated `curl -L` command through Android's standard share sheet.
+- Source-candidate review can now open the selected candidate URL in an external browser for quick result inspection.
+- Source-candidate review can now open the selected candidate's Referer/source page in an external browser when available.
+- Source-candidate review now preserves the selected candidate across status refreshes when that candidate is still available.
 - Android UI now includes a Play after 50 MB action below Download; selected tasks keep downloading to completion while the partial file is opened in an external player once it reaches 50 MB.
 - Play after 50 MB now has dedicated multi-download queue messaging and a playback-started notification while the download continues.
 - Play after 50 MB now persists its playback-attempt state so recovered or restarted tasks do not repeatedly relaunch the external player.
@@ -122,6 +131,7 @@ This Android app is a native port track for the desktop downloader in `downloade
 - DASH representation selection now reads representation or adaptation `width`, `height`, and `codecs`, preferring higher resolution before bandwidth and reporting the selected representation details.
 - DASH parsing now honors MPD, Period, AdaptationSet, and Representation `BaseURL` hierarchy and skips audio-only AdaptationSet or Representation candidates before selecting the video stream.
 - DASH representation selection now also skips text/subtitle/image tracks and explicitly prefers video-like representations by MIME/content type, codecs, or dimensions.
+- DASH manifest parsing now detects separate audio tracks and reports that Android currently downloads the selected video representation while audio muxing remains pending, making the largest FFmpeg/ffprobe parity gap visible during downloads.
 - DASH `SegmentTimeline` parsing now expands negative repeat counts such as `S r="-1"` up to the next timeline timestamp or period duration.
 - DASH init and media segment downloads now retry transient failures and reject empty responses before writing them to the output.
 - DASH downloads write init + media segments into `.mp4` and keep a checkpoint for resumable segment progress.
@@ -136,7 +146,8 @@ This Android app is a native port track for the desktop downloader in `downloade
 
 ## Next Porting Order
 
-1. Extend the Android-native remux path and evaluate FFmpegKit or equivalent fallback for formats MediaMuxer cannot handle.
-2. Add structured per-site episode/source metadata for major individual sites.
-3. Port additional site parsers in clusters, starting with JAV/adult sites.
-4. Continue expanding search result review and alternate-site fallback.
+1. Complete FFmpeg/ffprobe parity on Android: multi-track DASH audio/video muxing, unsupported-remux fallback, transcode fallback, and duration/media validation.
+2. Port deep per-site parsers in high-value clusters, starting with MovieFFM/Gimy/Xiaoya and JAV/adult sites that currently rely on generic traversal.
+3. Add yt-dlp/plugin-equivalent fallback strategy or a constrained Android replacement for unsupported platforms.
+4. Expand desktop-style search result review with richer alternate-site fallback prompts while keeping the queue display file/progress-only.
+5. Add structured per-site episode/source metadata for major individual sites once the parser clusters are deeper.

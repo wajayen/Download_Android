@@ -62,12 +62,20 @@ public final class MainActivity extends Activity {
     private Spinner sourceSpinner;
     private Button selectedSourceButton;
     private Button copySourceButton;
+    private Button copyAllSourcesButton;
+    private Button shareAllSourcesButton;
+    private Button shareSourceButton;
+    private Button copySourceCurlButton;
+    private Button shareSourceCurlButton;
+    private Button openSourceButton;
+    private Button openRefererButton;
     private TextView sourceDetailText;
     private TextView statusText;
     private TaskStore taskStore;
     private List<TaskStore.CandidateOption> sourceOptions = new ArrayList<>();
     private List<CompletedVideo> completedVideos = new ArrayList<>();
     private int selectedCompletedVideoIndex = 0;
+    private String selectedSourceUrl = "";
     private boolean sourcePanelVisible = false;
 
     private static final class BrowserRequestContext {
@@ -232,6 +240,9 @@ public final class MainActivity extends Activity {
         sourceSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (position >= 0 && position < sourceOptions.size()) {
+                    selectedSourceUrl = sourceOptions.get(position).url;
+                }
                 updateSourceDetail();
             }
 
@@ -262,6 +273,48 @@ public final class MainActivity extends Activity {
         styleSecondaryButton(copySourceButton);
         copySourceButton.setOnClickListener(view -> copySelectedSourceDetail());
         sourcePanel.addView(copySourceButton, matchWrap());
+
+        copyAllSourcesButton = new Button(this);
+        copyAllSourcesButton.setText(getString(R.string.action_copy_all_source_details));
+        styleSecondaryButton(copyAllSourcesButton);
+        copyAllSourcesButton.setOnClickListener(view -> copyAllSourceDetails());
+        sourcePanel.addView(copyAllSourcesButton, matchWrap());
+
+        shareAllSourcesButton = new Button(this);
+        shareAllSourcesButton.setText(getString(R.string.action_share_all_source_details));
+        styleSecondaryButton(shareAllSourcesButton);
+        shareAllSourcesButton.setOnClickListener(view -> shareAllSourceDetails());
+        sourcePanel.addView(shareAllSourcesButton, matchWrap());
+
+        shareSourceButton = new Button(this);
+        shareSourceButton.setText(getString(R.string.action_share_source_detail));
+        styleSecondaryButton(shareSourceButton);
+        shareSourceButton.setOnClickListener(view -> shareSelectedSourceDetail());
+        sourcePanel.addView(shareSourceButton, matchWrap());
+
+        copySourceCurlButton = new Button(this);
+        copySourceCurlButton.setText(getString(R.string.action_copy_source_curl));
+        styleSecondaryButton(copySourceCurlButton);
+        copySourceCurlButton.setOnClickListener(view -> copySelectedSourceCurl());
+        sourcePanel.addView(copySourceCurlButton, matchWrap());
+
+        shareSourceCurlButton = new Button(this);
+        shareSourceCurlButton.setText(getString(R.string.action_share_source_curl));
+        styleSecondaryButton(shareSourceCurlButton);
+        shareSourceCurlButton.setOnClickListener(view -> shareSelectedSourceCurl());
+        sourcePanel.addView(shareSourceCurlButton, matchWrap());
+
+        openSourceButton = new Button(this);
+        openSourceButton.setText(getString(R.string.action_open_source_in_browser));
+        styleSecondaryButton(openSourceButton);
+        openSourceButton.setOnClickListener(view -> openSelectedSourceInBrowser());
+        sourcePanel.addView(openSourceButton, matchWrap());
+
+        openRefererButton = new Button(this);
+        openRefererButton.setText(getString(R.string.action_open_referer_in_browser));
+        styleSecondaryButton(openRefererButton);
+        openRefererButton.setOnClickListener(view -> openSelectedRefererInBrowser());
+        sourcePanel.addView(openRefererButton, matchWrap());
 
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(BACKGROUND);
@@ -668,7 +721,7 @@ public final class MainActivity extends Activity {
 
     private void playSelectedCompletedVideo() {
         CompletedVideo selected = selectedCompletedVideo();
-        if (selected == null || !selected.exists()) {
+        if (selected == null || !selected.exists(this)) {
             Toast.makeText(this, getString(R.string.toast_no_completed_video), Toast.LENGTH_SHORT).show();
             refreshCompletedVideos();
             return;
@@ -732,6 +785,9 @@ public final class MainActivity extends Activity {
         }
         completedVideos = latestCompletedVideos();
         if (selectedCompletedVideoIndex >= completedVideos.size()) {
+            selectedCompletedVideoIndex = Math.max(0, completedVideos.size() - 1);
+        }
+        if (selectedCompletedVideoIndex < 0) {
             selectedCompletedVideoIndex = 0;
         }
         completedVideoList.removeAllViews();
@@ -739,7 +795,15 @@ public final class MainActivity extends Activity {
             completedVideoList.addView(completedVideoRow(getString(R.string.completed_video_none), false, null), matchWrap());
             return;
         }
-        for (int i = 0; i < completedVideos.size(); i++) {
+        completedVideoList.addView(videoSelectButton("\u25b2", selectedCompletedVideoIndex > 0, view -> {
+            if (selectedCompletedVideoIndex > 0) {
+                selectedCompletedVideoIndex--;
+                refreshCompletedVideos();
+            }
+        }), matchWrap());
+        int start = Math.max(0, Math.min(selectedCompletedVideoIndex - 1, completedVideos.size() - 3));
+        int end = Math.min(completedVideos.size(), start + 3);
+        for (int i = start; i < end; i++) {
             final int index = i;
             completedVideoList.addView(
                     completedVideoRow(completedVideos.get(i).label, i == selectedCompletedVideoIndex, view -> {
@@ -748,6 +812,12 @@ public final class MainActivity extends Activity {
                     }),
                     matchWrap());
         }
+        completedVideoList.addView(videoSelectButton("\u25bc", selectedCompletedVideoIndex < completedVideos.size() - 1, view -> {
+            if (selectedCompletedVideoIndex < completedVideos.size() - 1) {
+                selectedCompletedVideoIndex++;
+                refreshCompletedVideos();
+            }
+        }), matchWrap());
     }
 
     private CompletedVideo selectedCompletedVideo() {
@@ -771,6 +841,17 @@ public final class MainActivity extends Activity {
         return row;
     }
 
+    private Button videoSelectButton(String text, boolean enabled, View.OnClickListener listener) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextSize(16);
+        button.setSingleLine(true);
+        styleSecondaryButton(button);
+        button.setEnabled(enabled);
+        button.setOnClickListener(listener);
+        return button;
+    }
+
     private List<CompletedVideo> latestCompletedVideos() {
         List<CompletedVideo> videos = new ArrayList<>();
         File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
@@ -785,10 +866,7 @@ public final class MainActivity extends Activity {
             addCompletedVideos(videos, publicDir);
         }
         videos.sort((left, right) -> Long.compare(right.updatedAt, left.updatedAt));
-        if (videos.size() > 3) {
-            videos = new ArrayList<>(videos.subList(0, 3));
-        }
-        return numberedCompletedVideos(videos);
+        return labeledCompletedVideos(videos);
     }
 
     private void addCompletedVideos(List<CompletedVideo> videos, File dir) {
@@ -839,7 +917,7 @@ public final class MainActivity extends Activity {
                     continue;
                 }
                 Uri uri = Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, String.valueOf(cursor.getLong(idColumn)));
-                if (!containsCompletedVideo(videos, uri)) {
+                if (canOpenVideoUri(uri) && !containsCompletedVideo(videos, uri)) {
                     videos.add(CompletedVideo.fromUri(uri, name, cursor.getLong(modifiedColumn) * 1000L, ""));
                 }
             }
@@ -848,13 +926,37 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private List<CompletedVideo> numberedCompletedVideos(List<CompletedVideo> videos) {
-        List<CompletedVideo> numbered = new ArrayList<>();
+    private List<CompletedVideo> labeledCompletedVideos(List<CompletedVideo> videos) {
+        List<CompletedVideo> labeled = new ArrayList<>();
         for (int i = 0; i < videos.size(); i++) {
             CompletedVideo video = videos.get(i);
-            numbered.add(video.withLabel((i + 1) + ". " + video.name));
+            labeled.add(video.withLabel(displayVideoName(video.name)));
         }
-        return numbered;
+        return labeled;
+    }
+
+    private String displayVideoName(String name) {
+        String value = name == null ? "" : name.trim();
+        int slash = Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\'));
+        if (slash >= 0 && slash + 1 < value.length()) {
+            value = value.substring(slash + 1);
+        }
+        int dot = value.lastIndexOf('.');
+        if (dot > 0) {
+            value = value.substring(0, dot);
+        }
+        return value.isEmpty() ? "video" : value;
+    }
+
+    private boolean canOpenVideoUri(Uri uri) {
+        if (uri == null) {
+            return false;
+        }
+        try (android.os.ParcelFileDescriptor descriptor = getContentResolver().openFileDescriptor(uri, "r")) {
+            return descriptor != null;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private boolean containsCompletedVideo(List<CompletedVideo> videos, File file) {
@@ -930,10 +1032,12 @@ public final class MainActivity extends Activity {
             return;
         }
         sourceOptions = taskStore.latestCandidateOptions();
+        int selectedIndex = selectedSourceIndex();
         List<TaskStore.CandidateOption> adapterItems = sourceOptions;
         if (adapterItems.isEmpty()) {
             adapterItems = new ArrayList<>();
             adapterItems.add(new TaskStore.CandidateOption("", -1, "", getString(R.string.source_none)));
+            selectedSourceUrl = "";
         }
         ArrayAdapter<TaskStore.CandidateOption> adapter = new ArrayAdapter<>(
                 this,
@@ -941,9 +1045,35 @@ public final class MainActivity extends Activity {
                 adapterItems);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         sourceSpinner.setAdapter(adapter);
+        if (!sourceOptions.isEmpty()) {
+            sourceSpinner.setSelection(selectedIndex, false);
+            selectedSourceUrl = sourceOptions.get(selectedIndex).url;
+        }
         selectedSourceButton.setEnabled(!sourceOptions.isEmpty());
         copySourceButton.setEnabled(!sourceOptions.isEmpty());
+        copyAllSourcesButton.setEnabled(!sourceOptions.isEmpty());
+        shareAllSourcesButton.setEnabled(!sourceOptions.isEmpty());
+        shareSourceButton.setEnabled(!sourceOptions.isEmpty());
+        copySourceCurlButton.setEnabled(!sourceOptions.isEmpty());
+        shareSourceCurlButton.setEnabled(!sourceOptions.isEmpty());
+        openSourceButton.setEnabled(!sourceOptions.isEmpty());
+        openRefererButton.setEnabled(false);
         updateSourceDetail();
+    }
+
+    private int selectedSourceIndex() {
+        if (sourceOptions.isEmpty()) {
+            return 0;
+        }
+        if (selectedSourceUrl == null || selectedSourceUrl.isEmpty()) {
+            return 0;
+        }
+        for (int i = 0; i < sourceOptions.size(); i++) {
+            if (selectedSourceUrl.equals(sourceOptions.get(i).url)) {
+                return i;
+            }
+        }
+        return 0;
     }
 
     private TaskStore.CandidateOption selectedSourceOption() {
@@ -963,18 +1093,31 @@ public final class MainActivity extends Activity {
         }
         if (sourceOptions.isEmpty()) {
             sourceDetailText.setText(getString(R.string.source_detail_empty));
+            openRefererButton.setEnabled(false);
             return;
         }
         TaskStore.CandidateOption option = selectedSourceOption();
         if (option == null) {
             sourceDetailText.setText(getString(R.string.source_detail_empty));
+            openRefererButton.setEnabled(false);
             return;
         }
         if (option.referer == null || option.referer.trim().isEmpty()) {
-            sourceDetailText.setText(getString(R.string.source_detail_format, option.url));
+            sourceDetailText.setText(sourceDetailText(option));
+            openRefererButton.setEnabled(false);
         } else {
-            sourceDetailText.setText(getString(R.string.source_detail_with_referer_format, option.url, option.referer));
+            sourceDetailText.setText(sourceDetailText(option));
+            openRefererButton.setEnabled(true);
         }
+    }
+
+    private String sourceDetailText(TaskStore.CandidateOption option) {
+        if (option == null) {
+            return getString(R.string.source_detail_empty);
+        }
+        return option.referer == null || option.referer.trim().isEmpty()
+                ? getString(R.string.source_detail_format, option.url)
+                : getString(R.string.source_detail_with_referer_format, option.url, option.referer);
     }
 
     private void copySelectedSourceDetail() {
@@ -983,13 +1126,137 @@ public final class MainActivity extends Activity {
             Toast.makeText(this, getString(R.string.toast_no_source_candidate), Toast.LENGTH_SHORT).show();
             return;
         }
-        String text = option.referer == null || option.referer.trim().isEmpty()
-                ? getString(R.string.source_detail_format, option.url)
-                : getString(R.string.source_detail_with_referer_format, option.url, option.referer);
+        String text = sourceDetailText(option);
         ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         if (clipboard != null) {
             clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.section_source_candidates), text));
             Toast.makeText(this, getString(R.string.toast_source_detail_copied), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void copyAllSourceDetails() {
+        if (sourceOptions.isEmpty()) {
+            Toast.makeText(this, getString(R.string.toast_no_source_candidate), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.section_source_candidates), allSourceDetailsText()));
+            Toast.makeText(this, getString(R.string.toast_all_source_details_copied, sourceOptions.size()), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private String allSourceDetailsText() {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < sourceOptions.size(); i++) {
+            TaskStore.CandidateOption option = sourceOptions.get(i);
+            if (i > 0) {
+                builder.append("\n\n");
+            }
+            builder.append(i + 1).append(". ").append(option.label).append('\n');
+            builder.append(sourceDetailText(option));
+        }
+        return builder.toString();
+    }
+
+    private void shareAllSourceDetails() {
+        if (sourceOptions.isEmpty()) {
+            Toast.makeText(this, getString(R.string.toast_no_source_candidate), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TEXT, allSourceDetailsText());
+        try {
+            startActivity(Intent.createChooser(intent, getString(R.string.action_share_all_source_details)));
+        } catch (Exception error) {
+            Toast.makeText(this, getString(R.string.toast_all_source_details_share_failed), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void shareSelectedSourceDetail() {
+        TaskStore.CandidateOption option = selectedSourceOption();
+        if (option == null) {
+            Toast.makeText(this, getString(R.string.toast_no_source_candidate), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TEXT, sourceDetailText(option));
+        try {
+            startActivity(Intent.createChooser(intent, getString(R.string.action_share_source_detail)));
+        } catch (Exception error) {
+            Toast.makeText(this, getString(R.string.toast_source_share_failed), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void copySelectedSourceCurl() {
+        TaskStore.CandidateOption option = selectedSourceOption();
+        if (option == null) {
+            Toast.makeText(this, getString(R.string.toast_no_source_candidate), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.action_copy_source_curl), sourceCurlText(option)));
+            Toast.makeText(this, getString(R.string.toast_source_curl_copied), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void shareSelectedSourceCurl() {
+        TaskStore.CandidateOption option = selectedSourceOption();
+        if (option == null) {
+            Toast.makeText(this, getString(R.string.toast_no_source_candidate), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TEXT, sourceCurlText(option));
+        try {
+            startActivity(Intent.createChooser(intent, getString(R.string.action_share_source_curl)));
+        } catch (Exception error) {
+            Toast.makeText(this, getString(R.string.toast_source_curl_share_failed), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private String sourceCurlText(TaskStore.CandidateOption option) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("curl -L \"").append(escapeCurlQuote(option.url)).append("\"");
+        if (option.referer != null && !option.referer.trim().isEmpty()) {
+            builder.append(" -H \"Referer: ").append(escapeCurlQuote(option.referer.trim())).append("\"");
+        }
+        return builder.toString();
+    }
+
+    private String escapeCurlQuote(String value) {
+        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private void openSelectedSourceInBrowser() {
+        TaskStore.CandidateOption option = selectedSourceOption();
+        if (option == null) {
+            Toast.makeText(this, getString(R.string.toast_no_source_candidate), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(option.url));
+            startActivity(intent);
+        } catch (Exception error) {
+            Toast.makeText(this, getString(R.string.toast_source_open_failed), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void openSelectedRefererInBrowser() {
+        TaskStore.CandidateOption option = selectedSourceOption();
+        if (option == null || option.referer == null || option.referer.trim().isEmpty()) {
+            Toast.makeText(this, getString(R.string.toast_no_referer_available), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(option.referer));
+            startActivity(intent);
+        } catch (Exception error) {
+            Toast.makeText(this, getString(R.string.toast_referer_open_failed), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -1042,8 +1309,18 @@ public final class MainActivity extends Activity {
             return new CompletedVideo(file, uri, name, updatedAt, label);
         }
 
-        boolean exists() {
-            return uri != null || (file != null && file.exists());
+        boolean exists(Context context) {
+            if (file != null) {
+                return file.exists() && file.isFile() && file.length() > 0L;
+            }
+            if (uri == null || context == null) {
+                return false;
+            }
+            try (android.os.ParcelFileDescriptor descriptor = context.getContentResolver().openFileDescriptor(uri, "r")) {
+                return descriptor != null;
+            } catch (Exception ignored) {
+                return false;
+            }
         }
 
         @Override

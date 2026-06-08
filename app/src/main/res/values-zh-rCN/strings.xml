@@ -24,6 +24,13 @@
     <string name="action_source_candidates">来源候选</string>
     <string name="action_queue_selected_source">加入所选来源</string>
     <string name="action_copy_source_detail">复制来源信息</string>
+    <string name="action_copy_all_source_details">复制全部来源</string>
+    <string name="action_share_all_source_details">分享全部来源</string>
+    <string name="action_share_source_detail">分享来源信息</string>
+    <string name="action_copy_source_curl">复制 cURL</string>
+    <string name="action_share_source_curl">分享 cURL</string>
+    <string name="action_open_source_in_browser">打开来源</string>
+    <string name="action_open_referer_in_browser">打开来源页</string>
     <string name="action_clear_finished">清除已完成</string>
     <string name="action_export_logs">导出日志</string>
     <string name="status_idle">当前没有下载队列</string>
@@ -37,6 +44,14 @@
     <string name="toast_selected_source_unavailable">所选来源已不可用</string>
     <string name="toast_cleared_finished">已清除 %1$d 个完成项目</string>
     <string name="toast_source_detail_copied">来源信息已复制</string>
+    <string name="toast_all_source_details_copied">已复制 %1$d 个来源候选</string>
+    <string name="toast_all_source_details_share_failed">无法分享来源候选</string>
+    <string name="toast_source_share_failed">无法分享来源信息</string>
+    <string name="toast_source_curl_copied">cURL 命令已复制</string>
+    <string name="toast_source_curl_share_failed">无法分享 cURL 命令</string>
+    <string name="toast_source_open_failed">无法打开来源</string>
+    <string name="toast_no_referer_available">没有可用的来源页</string>
+    <string name="toast_referer_open_failed">无法打开来源页</string>
     <string name="toast_logs_exported">日志已导出</string>
     <string name="toast_log_export_failed">日志导出失败</string>
     <string name="status_download_queued">已加入下载队列\n%1$s</string>
@@ -125,4 +140,5 @@
     <string name="toast_playback_unavailable">&#26080;&#27861;&#21551;&#21160;&#25773;&#25918;&#22120;</string>
     <string name="completed_video_none">&#27809;&#26377;&#24050;&#23436;&#25104;&#30340;&#35270;&#39057;</string>
     <string name="task_message_playback_unavailable">&#26080;&#27861;&#21551;&#21160;&#25773;&#25918;&#22120;&#65292;&#19979;&#36733;&#20250;&#32487;&#32493;</string>
+    <string name="engine_dash_video_only_audio_pending">检测到 DASH 音频轨，但音频合并尚未移植：%1$s</string>
 </resources>

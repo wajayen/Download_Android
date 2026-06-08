@@ -25,6 +25,13 @@
     <string name="action_source_candidates">Source Candidates</string>
     <string name="action_queue_selected_source">Queue Selected Source</string>
     <string name="action_copy_source_detail">Copy Source Detail</string>
+    <string name="action_copy_all_source_details">Copy All Sources</string>
+    <string name="action_share_all_source_details">Share All Sources</string>
+    <string name="action_share_source_detail">Share Source Detail</string>
+    <string name="action_copy_source_curl">Copy cURL</string>
+    <string name="action_share_source_curl">Share cURL</string>
+    <string name="action_open_source_in_browser">Open Source</string>
+    <string name="action_open_referer_in_browser">Open Referer</string>
     <string name="action_clear_finished">Clear Finished</string>
     <string name="action_export_logs">Export Logs</string>
     <string name="status_idle">No downloads queued</string>
@@ -38,6 +45,14 @@
     <string name="toast_selected_source_unavailable">Selected source is no longer available</string>
     <string name="toast_cleared_finished">Cleared %1$d finished task(s)</string>
     <string name="toast_source_detail_copied">Source detail copied</string>
+    <string name="toast_all_source_details_copied">Copied %1$d source candidates</string>
+    <string name="toast_all_source_details_share_failed">Could not share source candidates</string>
+    <string name="toast_source_share_failed">Could not share source detail</string>
+    <string name="toast_source_curl_copied">cURL command copied</string>
+    <string name="toast_source_curl_share_failed">Could not share cURL command</string>
+    <string name="toast_source_open_failed">Could not open source</string>
+    <string name="toast_no_referer_available">No referer available</string>
+    <string name="toast_referer_open_failed">Could not open referer</string>
     <string name="toast_logs_exported">Logs exported</string>
     <string name="toast_log_export_failed">Log export failed</string>
     <string name="toast_no_completed_video">No completed video to play</string>
@@ -125,4 +140,5 @@
     <string name="search_candidate_alternate">alternate search result: %1$s</string>
     <string name="search_candidate_previous">previous search result: %1$s</string>
     <string name="task_message_playback_unavailable">Could not start a player; download continues</string>
+    <string name="engine_dash_video_only_audio_pending">DASH audio track detected but mux is not yet ported: %1$s</string>
 </resources>

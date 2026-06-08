@@ -24,6 +24,13 @@
     <string name="action_source_candidates">來源候選</string>
     <string name="action_queue_selected_source">加入選取來源</string>
     <string name="action_copy_source_detail">複製來源資訊</string>
+    <string name="action_copy_all_source_details">複製全部來源</string>
+    <string name="action_share_all_source_details">分享全部來源</string>
+    <string name="action_share_source_detail">分享來源資訊</string>
+    <string name="action_copy_source_curl">複製 cURL</string>
+    <string name="action_share_source_curl">分享 cURL</string>
+    <string name="action_open_source_in_browser">開啟來源</string>
+    <string name="action_open_referer_in_browser">開啟來源頁</string>
     <string name="action_clear_finished">清除已完成</string>
     <string name="action_export_logs">匯出記錄</string>
     <string name="status_idle">目前沒有下載佇列</string>
@@ -37,6 +44,14 @@
     <string name="toast_selected_source_unavailable">選取的來源已不可用</string>
     <string name="toast_cleared_finished">已清除 %1$d 個完成項目</string>
     <string name="toast_source_detail_copied">來源資訊已複製</string>
+    <string name="toast_all_source_details_copied">已複製 %1$d 筆來源候選</string>
+    <string name="toast_all_source_details_share_failed">無法分享來源候選</string>
+    <string name="toast_source_share_failed">無法分享來源資訊</string>
+    <string name="toast_source_curl_copied">cURL 指令已複製</string>
+    <string name="toast_source_curl_share_failed">無法分享 cURL 指令</string>
+    <string name="toast_source_open_failed">無法開啟來源</string>
+    <string name="toast_no_referer_available">沒有可用的來源頁</string>
+    <string name="toast_referer_open_failed">無法開啟來源頁</string>
     <string name="toast_logs_exported">記錄已匯出</string>
     <string name="toast_log_export_failed">記錄匯出失敗</string>
     <string name="status_download_queued">已加入下載佇列\n%1$s</string>
@@ -125,4 +140,5 @@
     <string name="toast_playback_unavailable">&#28961;&#27861;&#21855;&#21205;&#25773;&#25918;&#22120;</string>
     <string name="completed_video_none">&#27794;&#26377;&#24050;&#23436;&#25104;&#30340;&#24433;&#29255;</string>
     <string name="task_message_playback_unavailable">&#28961;&#27861;&#21855;&#21205;&#25773;&#25918;&#22120;&#65292;&#19979;&#36617;&#26371;&#32380;&#32396;</string>
+    <string name="engine_dash_video_only_audio_pending">偵測到 DASH 音訊軌，但音訊合併尚未移植：%1$s</string>
 </resources>

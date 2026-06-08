@@ -24,6 +24,13 @@
     <string name="action_source_candidates">ソース候補</string>
     <string name="action_queue_selected_source">選択したソースを追加</string>
     <string name="action_copy_source_detail">ソース情報をコピー</string>
+    <string name="action_copy_all_source_details">すべてのソースをコピー</string>
+    <string name="action_share_all_source_details">すべてのソースを共有</string>
+    <string name="action_share_source_detail">ソース情報を共有</string>
+    <string name="action_copy_source_curl">cURL をコピー</string>
+    <string name="action_share_source_curl">cURL を共有</string>
+    <string name="action_open_source_in_browser">ソースを開く</string>
+    <string name="action_open_referer_in_browser">Referer を開く</string>
     <string name="action_clear_finished">完了項目をクリア</string>
     <string name="action_export_logs">ログを書き出す</string>
     <string name="status_idle">ダウンロード待ちはありません</string>
@@ -37,6 +44,14 @@
     <string name="toast_selected_source_unavailable">選択したソースは利用できません</string>
     <string name="toast_cleared_finished">完了項目を %1$d 件クリアしました</string>
     <string name="toast_source_detail_copied">ソース情報をコピーしました</string>
+    <string name="toast_all_source_details_copied">%1$d 件のソース候補をコピーしました</string>
+    <string name="toast_all_source_details_share_failed">ソース候補を共有できませんでした</string>
+    <string name="toast_source_share_failed">ソース情報を共有できませんでした</string>
+    <string name="toast_source_curl_copied">cURL コマンドをコピーしました</string>
+    <string name="toast_source_curl_share_failed">cURL コマンドを共有できませんでした</string>
+    <string name="toast_source_open_failed">ソースを開けませんでした</string>
+    <string name="toast_no_referer_available">利用可能な Referer はありません</string>
+    <string name="toast_referer_open_failed">Referer を開けませんでした</string>
     <string name="toast_logs_exported">ログを書き出しました</string>
     <string name="toast_log_export_failed">ログの書き出しに失敗しました</string>
     <string name="status_download_queued">ダウンロード待ちに追加しました\n%1$s</string>
@@ -125,4 +140,5 @@
     <string name="toast_playback_unavailable">&#12503;&#12524;&#12540;&#12516;&#12540;&#12434;&#36215;&#21205;&#12391;&#12365;&#12414;&#12379;&#12435;</string>
     <string name="completed_video_none">&#23436;&#20102;&#28168;&#12415;&#21205;&#30011;&#12399;&#12354;&#12426;&#12414;&#12379;&#12435;</string>
     <string name="task_message_playback_unavailable">&#12503;&#12524;&#12540;&#12516;&#12540;&#12434;&#36215;&#21205;&#12391;&#12365;&#12414;&#12379;&#12435;&#12290;&#12480;&#12454;&#12531;&#12525;&#12540;&#12489;&#12399;&#32154;&#34892;&#12375;&#12414;&#12377;</string>
+    <string name="engine_dash_video_only_audio_pending">DASH 音声トラックを検出しましたが、音声 mux は未移植です：%1$s</string>
 </resources>
