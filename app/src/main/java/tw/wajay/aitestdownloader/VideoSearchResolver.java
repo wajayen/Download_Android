@@ -37,6 +37,9 @@ final class VideoSearchResolver {
     private static final Pattern DATA_LINK = Pattern.compile(
             "\\b(?:data-url|data-href|data-src|data-play|data-link|data-video|data-clipboard-text)=[\"']([^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern IMAGE_SRC = Pattern.compile(
+            "<img\\b[^>]+(?:src|data-src|data-original|data-lazy-src|data-thumb|data-poster)=[\"']([^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
     private VideoSearchResolver() {
     }
@@ -46,12 +49,18 @@ final class VideoSearchResolver {
         final String title;
         final String sourceSite;
         final String refererUrl;
+        final String thumbnailUrl;
 
         Result(String url, String title, String sourceSite, String refererUrl) {
+            this(url, title, sourceSite, refererUrl, "");
+        }
+
+        Result(String url, String title, String sourceSite, String refererUrl, String thumbnailUrl) {
             this.url = url;
             this.title = title;
             this.sourceSite = sourceSite;
             this.refererUrl = refererUrl == null ? "" : refererUrl;
+            this.thumbnailUrl = thumbnailUrl == null ? "" : thumbnailUrl;
         }
     }
 
@@ -284,7 +293,7 @@ final class VideoSearchResolver {
                 if (out.size() >= MAX_RESULTS) {
                     return;
                 }
-                addResult(result.url, result.title, searchUrl, seen, out);
+                addResult(result.url, result.title, searchUrl, seen, out, result.thumbnailUrl);
             }
         } catch (IOException ignored) {
             // Keep the direct search page as a fallback candidate when a site blocks or times out.
@@ -305,7 +314,9 @@ final class VideoSearchResolver {
             if (score < 0) {
                 continue;
             }
-            ranked.add(new RankedResult(url, sourceLabel + ": " + title, score));
+            String nearbyHtml = htmlWindow(html, matcher.start(), matcher.end());
+            String thumbnailUrl = extractThumbnailUrl(nearbyHtml, baseUrl);
+            ranked.add(new RankedResult(url, sourceLabel + ": " + title, score, thumbnailUrl));
         }
         Matcher dataMatcher = DATA_LINK.matcher(html == null ? "" : html);
         while (dataMatcher.find() && ranked.size() < SITE_SEARCH_LINK_LIMIT * 4) {
@@ -317,7 +328,9 @@ final class VideoSearchResolver {
             if (score < 0) {
                 continue;
             }
-            ranked.add(new RankedResult(url, sourceLabel + ": embedded link", score));
+            String nearbyHtml = htmlWindow(html, dataMatcher.start(), dataMatcher.end());
+            String thumbnailUrl = extractThumbnailUrl(nearbyHtml, baseUrl);
+            ranked.add(new RankedResult(url, sourceLabel + ": embedded link", score, thumbnailUrl));
         }
         Collections.sort(ranked, new Comparator<RankedResult>() {
             @Override
@@ -339,10 +352,49 @@ final class VideoSearchResolver {
     }
 
     private static void addResult(String url, String title, String refererUrl, Set<String> seen, List<Result> out) {
+        addResult(url, title, refererUrl, seen, out, "");
+    }
+
+    private static void addResult(String url, String title, String refererUrl, Set<String> seen, List<Result> out, String thumbnailUrl) {
         if (url == null || url.isEmpty() || !isSupportedCandidate(url) || !seen.add(url)) {
             return;
         }
-        out.add(new Result(url, cleanTitle(title), MediaResolver.sourceSite(url), refererUrl));
+        out.add(new Result(url, cleanTitle(title), MediaResolver.sourceSite(url), refererUrl, thumbnailUrl));
+    }
+
+    private static String htmlWindow(String html, int start, int end) {
+        String text = html == null ? "" : html;
+        int from = Math.max(0, start - 1200);
+        int to = Math.min(text.length(), end + 2200);
+        return from < to ? text.substring(from, to) : "";
+    }
+
+    private static String extractThumbnailUrl(String html, String baseUrl) {
+        Matcher matcher = IMAGE_SRC.matcher(html == null ? "" : html);
+        while (matcher.find()) {
+            String raw = matcher.group(1);
+            String url = normalizeResultUrl(raw, baseUrl);
+            if (looksLikeThumbnailUrl(url)) {
+                return url;
+            }
+        }
+        return "";
+    }
+
+    private static boolean looksLikeThumbnailUrl(String rawUrl) {
+        String url = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            return false;
+        }
+        return !url.endsWith(".svg")
+                && (url.contains(".jpg")
+                || url.contains(".jpeg")
+                || url.contains(".png")
+                || url.contains(".webp")
+                || url.contains(".gif")
+                || url.contains("thumb")
+                || url.contains("cover")
+                || url.contains("poster"));
     }
 
     private static String normalizeResultUrl(String raw) {
@@ -579,11 +631,17 @@ final class VideoSearchResolver {
         final String url;
         final String title;
         final int score;
+        final String thumbnailUrl;
 
         RankedResult(String url, String title, int score) {
+            this(url, title, score, "");
+        }
+
+        RankedResult(String url, String title, int score, String thumbnailUrl) {
             this.url = url;
             this.title = title;
             this.score = score;
+            this.thumbnailUrl = thumbnailUrl == null ? "" : thumbnailUrl;
         }
     }
 }

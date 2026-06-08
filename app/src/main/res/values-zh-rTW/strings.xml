@@ -1,4 +1,11 @@
 <resources>
+    <string name="section_search_results">選擇搜尋結果</string>
+    <string name="toast_search_failed">搜尋失敗</string>
+    <string name="toast_no_search_results">找不到搜尋結果</string>
+    <string name="search_result_site_unknown">未知站台</string>
+    <string name="search_result_no_title">未命名影片</string>
+    <string name="search_result_thumbnail_description">縮圖</string>
+    <string name="status_searching_results">正在搜尋結果...</string>
     <string name="app_name">下載者</string>
     <string name="build_ready">貼上影片網址、瀏覽器請求標頭，或受保護頁面的 Copy as cURL 文字。</string>
     <string name="hint_url">網址、影片名稱、番號，或 Copy as cURL 文字&#10;curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...</string>

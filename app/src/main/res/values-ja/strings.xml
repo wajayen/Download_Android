@@ -1,4 +1,11 @@
 <resources>
+    <string name="section_search_results">検索結果を選択</string>
+    <string name="toast_search_failed">検索に失敗しました</string>
+    <string name="toast_no_search_results">検索結果が見つかりません</string>
+    <string name="search_result_site_unknown">不明なサイト</string>
+    <string name="search_result_no_title">無題の動画</string>
+    <string name="search_result_thumbnail_description">サムネイル</string>
+    <string name="status_searching_results">検索結果を取得しています...</string>
     <string name="app_name">ダウンローダー</string>
     <string name="build_ready">動画 URL、ブラウザーのリクエストヘッダー、または保護ページの Copy as cURL テキストを貼り付けてください。</string>
     <string name="hint_url">URL、動画名、品番、または Copy as cURL テキスト&#10;curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...</string>

@@ -11,6 +11,7 @@
     <string name="section_download_queue">Download Queue</string>
     <string name="section_new_download">New Download</string>
     <string name="section_source_candidates">Source Candidates</string>
+    <string name="section_search_results">Select Search Result</string>
     <string name="label_language">Language</string>
     <string name="language_system">System default</string>
     <string name="language_english">English</string>
@@ -38,6 +39,8 @@
     <string name="status_cancelling">Cancelling...</string>
     <string name="toast_enter_url">Enter at least one HTTP or HTTPS URL</string>
     <string name="toast_enter_url_or_search">Enter a URL, video title, or code</string>
+    <string name="toast_search_failed">Search failed</string>
+    <string name="toast_no_search_results">No search results found</string>
     <string name="toast_no_retry_task">No failed or cancelled task to retry</string>
     <string name="toast_no_alternate_source">No alternate source candidate available</string>
     <string name="toast_no_source_candidate">No source candidate available</string>
@@ -58,8 +61,12 @@
     <string name="toast_no_completed_video">No completed video to play</string>
     <string name="toast_playback_unavailable">Could not start a player</string>
     <string name="completed_video_none">No completed videos</string>
+    <string name="search_result_site_unknown">Unknown site</string>
+    <string name="search_result_no_title">Untitled video</string>
+    <string name="search_result_thumbnail_description">Thumbnail</string>
     <string name="status_download_queued">Download queued\n%1$s</string>
     <string name="status_search_queued">Search queued\n%1$s</string>
+    <string name="status_searching_results">Searching results...</string>
     <string name="status_download_play_after_queued">Download queued; playback will start after 50 MB\n%1$s</string>
     <string name="status_search_play_after_queued">Search queued; playback will start after 50 MB\n%1$s</string>
     <string name="status_queued_downloads">Queued %1$d downloads</string>

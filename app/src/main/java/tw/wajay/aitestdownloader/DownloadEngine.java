@@ -6,6 +6,7 @@ import android.media.MediaFormat;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Environment;
+import android.util.Base64;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -69,6 +70,35 @@ final class DownloadEngine {
             Pattern.CASE_INSENSITIVE);
     private static final Pattern ATTRIBUTE_PAIR = Pattern.compile("([A-Z0-9-]+)=((?:\"[^\"]+\")|[^,]+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern ANIME1_API_REQ = Pattern.compile("data-apireq=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    private static final Pattern BESTJAVPORN_VIDEO_ID = Pattern.compile("\\bvideo-id=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    private static final Pattern BESTJAVPORN_VIDEO_VER = Pattern.compile("\\bvideo_ver=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    private static final Pattern BESTJAVPORN_DATA_MPU = Pattern.compile("id=[\"']video-player[\"'][^>]+data-mpu=[\"']([^\"']+)", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern PLAYER_DATA_CONFIG = Pattern.compile("\\bdata-config=[\"']([^\"']+)", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern JAVDOCK_PLAYER_WRAPPER = Pattern.compile("id=[\"']player-wrapper[\"'][^>]*", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern JAVDOCK_DATA_TS_ID = Pattern.compile("\\bdata-ts-id=[\"']([^\"']+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern JAVDOCK_DATA_TS_LIVE = Pattern.compile("\\bdata-ts-live=[\"']([^\"']+)", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern JAVDOCK_DATA_TS_EP = Pattern.compile("\\bdata-ts-ep=[\"']([^\"']+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern NJAV_VIDEO_ID = Pattern.compile(
+            "Video\\(\\{id:\\s*[\"']?(\\d+)|v-scope=[\"']Video\\(\\{id:\\s*[\"']?(\\d+)|data-id=[\"'](\\d+)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern NJAV_POSTER = Pattern.compile("data-poster=[\"']([^\"']+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern NJAV_VIDEO_FRAME_SRC = Pattern.compile("videoFrame\\.src\\s*=\\s*[\"']([^\"']+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern NJAV_PLAYER_M3U8 = Pattern.compile(
+            "PLAYER_CONFIG\\s*=\\s*\\{.*?m3u8\\s*:\\s*[\"']([^\"']+)[\"']|\\bm3u8\\s*:\\s*[\"']([^\"']+)[\"']|\\bfile\\s*:\\s*[\"']([^\"']+(?:\\.m3u8|/play/token_hash)[^\"']*)[\"']",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern NJAVTV_SURRIT_PLAYLIST = Pattern.compile(
+            "(https://surrit\\.com/[^\\s\"']+/playlist\\.m3u8)|source\\s*=\\s*[\"'](https://surrit\\.com/[^\"']+/playlist\\.m3u8)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern JABLE_HLS = Pattern.compile(
+            "(https://[^\\s\"'\\\\]+\\.m3u8[^\\s\"'\\\\]*)|hlsUrl\\s*=\\s*[\"']([^\"']+\\.m3u8[^\"']*)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern SOURCE_SRC = Pattern.compile("<source\\b[^>]+\\bsrc=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern SUPJAV_BG = Pattern.compile("<div[^>]+id=[\"']dz_video[\"'][^>]*\\bbg=[\"']([^\"']*)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SUPJAV_SERVER_LINK = Pattern.compile(
+            "<a\\b[^>]*\\bclass=[\"'][^\"']*\\bbtn-server\\b[^\"']*[\"'][^>]*\\bdata-link=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern SUPJAV_CHILD_SRC = Pattern.compile("src=[\"'](\\?c=[^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SUPJAV_HLS_FIELD = Pattern.compile("[\"']hls\\d+[\"']\\s*:\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
     private static final int SEGMENT_RETRY_LIMIT = 3;
     private static final int PAGE_RESOLVE_DEPTH_LIMIT = 4;
     private static final int MAX_DASH_DURATION_SEGMENTS = 2000;
@@ -83,6 +113,20 @@ final class DownloadEngine {
             this.primaryUrl = primaryUrl;
             this.sourceSite = sourceSite;
             this.fallbackUrls = fallbackUrls;
+            this.refererUrl = refererUrl;
+        }
+    }
+
+    private static final class SiteMediaResult {
+        final String sourceSite;
+        final String primaryUrl;
+        final List<String> candidates;
+        final String refererUrl;
+
+        SiteMediaResult(String sourceSite, String primaryUrl, List<String> candidates, String refererUrl) {
+            this.sourceSite = sourceSite;
+            this.primaryUrl = primaryUrl;
+            this.candidates = candidates;
             this.refererUrl = refererUrl;
         }
     }
@@ -694,6 +738,12 @@ final class DownloadEngine {
                 callback.onResolved("anime1", anime1Url, Collections.singletonList(anime1Url), Collections.singletonList("Anime1 API"));
                 return new ResolvedTarget(anime1Url, "anime1", new ArrayList<>(), currentUrl);
             }
+            SiteMediaResult siteMedia = resolveAdultSiteMedia(currentUrl, pageText);
+            if (siteMedia != null && siteMedia.primaryUrl != null) {
+                callback.onStatus(context.getString(R.string.engine_resolving_page_candidate, siteMedia.sourceSite, depth));
+                callback.onResolved(siteMedia.sourceSite, siteMedia.primaryUrl, siteMedia.candidates, siteCandidateLabels(siteMedia.sourceSite, siteMedia.candidates));
+                return new ResolvedTarget(siteMedia.primaryUrl, siteMedia.sourceSite, mediaFallbacks(siteMedia.candidates, siteMedia.primaryUrl), siteMedia.refererUrl);
+            }
             MediaResolver.Result resolved = MediaResolver.resolve(pageText, currentUrl);
             callback.onStatus(context.getString(R.string.engine_resolving_page_candidate, resolved.sourceSite, depth));
             if (resolved.primaryUrl == null) {
@@ -758,6 +808,523 @@ final class DownloadEngine {
             }
         }
         return fallbacks;
+    }
+
+    private SiteMediaResult resolveAdultSiteMedia(String pageUrl, String pageText) throws IOException {
+        String site = MediaResolver.sourceSite(pageUrl);
+        if ("bestjavporn".equals(site)) {
+            return resolveBestJavPornMedia(pageUrl, pageText);
+        }
+        if ("javdock".equals(site)) {
+            return resolveJavDockMedia(pageUrl, pageText);
+        }
+        if ("njav".equals(site)) {
+            return resolveNjavMedia(pageUrl, pageText);
+        }
+        if ("njavtv".equals(site)) {
+            return resolveNjavTvMedia(pageUrl, pageText);
+        }
+        if ("jable".equals(site)) {
+            return resolveJableMedia(pageUrl, pageText);
+        }
+        if ("85xvideo".equals(site)) {
+            return resolve85xVideoMedia(pageUrl, pageText);
+        }
+        if ("tinyavideo".equals(site)) {
+            return resolveTinyAVideoMedia(pageUrl, pageText);
+        }
+        if ("supjav".equals(site)) {
+            return resolveSupJavMedia(pageUrl, pageText);
+        }
+        return null;
+    }
+
+    private SiteMediaResult resolveBestJavPornMedia(String pageUrl, String pageText) throws IOException {
+        Matcher videoIdMatcher = BESTJAVPORN_VIDEO_ID.matcher(pageText == null ? "" : pageText);
+        Matcher dataMpuMatcher = BESTJAVPORN_DATA_MPU.matcher(pageText == null ? "" : pageText);
+        if (!videoIdMatcher.find() || !dataMpuMatcher.find()) {
+            return null;
+        }
+        String videoId = htmlDecoded(videoIdMatcher.group(1)).trim();
+        String videoVer = "2";
+        Matcher videoVerMatcher = BESTJAVPORN_VIDEO_VER.matcher(pageText);
+        if (videoVerMatcher.find()) {
+            videoVer = firstNonEmpty(htmlDecoded(videoVerMatcher.group(1)), "2");
+        }
+        String origin = originFromUrl(pageUrl);
+        String sources = bestJavPornDex(videoId, htmlDecoded(dataMpuMatcher.group(1)));
+        String apiBody = "sources=" + urlEncode(sources) + "&ver=" + urlEncode(videoVer);
+        String apiText = postForm(origin + "/api/play/", apiBody, pageUrl);
+        JSONObject payload = parseJsonObject(apiText);
+        if (payload == null || !payloadStatus(payload) || payload.optString("data", "").isEmpty()) {
+            return null;
+        }
+        String playerPath = bestJavPornDex(videoId, payload.optString("data", ""));
+        String playerUrl = joinUrl(origin + "/", playerPath);
+        String playerText = readText(playerUrl, pageUrl);
+        List<String> candidates = decodeBestJavPornPlayerSources(playerText, playerUrl);
+        if (candidates.isEmpty()) {
+            candidates.addAll(extractMediaCandidates(playerText, playerUrl));
+        }
+        candidates = dedupeMediaCandidates(candidates);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("bestjavporn", candidates.get(0), candidates, playerUrl);
+    }
+
+    private SiteMediaResult resolveJavDockMedia(String pageUrl, String pageText) throws IOException {
+        Matcher wrapperMatcher = JAVDOCK_PLAYER_WRAPPER.matcher(pageText == null ? "" : pageText);
+        if (!wrapperMatcher.find()) {
+            return null;
+        }
+        String playerHtml = wrapperMatcher.group(0);
+        Matcher videoIdMatcher = JAVDOCK_DATA_TS_ID.matcher(playerHtml);
+        Matcher dataLiveMatcher = JAVDOCK_DATA_TS_LIVE.matcher(playerHtml);
+        if (!videoIdMatcher.find() || !dataLiveMatcher.find()) {
+            return null;
+        }
+        String videoId = htmlDecoded(videoIdMatcher.group(1)).trim();
+        String dataLive = htmlDecoded(dataLiveMatcher.group(1)).trim();
+        int epValue = 1;
+        Matcher epMatcher = JAVDOCK_DATA_TS_EP.matcher(playerHtml);
+        if (epMatcher.find()) {
+            epValue = Math.max(1, parseInt(htmlDecoded(epMatcher.group(1)), 2) - 1);
+        }
+        String origin = originFromUrl(pageUrl);
+        String sources = javDockFme(videoId, dataLive, true);
+        String apiBody = "sources=" + urlEncode(sources) + "&ep=" + epValue + "&ver=2";
+        String apiText = postForm(origin + "/api/play/", apiBody, pageUrl);
+        JSONObject payload = parseJsonObject(apiText);
+        if (payload == null || !payloadStatus(payload) || payload.optString("data", "").isEmpty()) {
+            return null;
+        }
+        String playerPath = javDockFme(videoId, payload.optString("data", ""), false);
+        String playerUrl = joinUrl(origin + "/", playerPath);
+        String playerText = readText(playerUrl, pageUrl);
+        List<String> candidates = decodeBestJavPornPlayerSources(playerText, playerUrl);
+        candidates.addAll(extractMediaCandidates(playerText, playerUrl));
+        candidates = dedupeMediaCandidates(candidates);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("javdock", candidates.get(0), candidates, playerUrl);
+    }
+
+    private SiteMediaResult resolveNjavMedia(String pageUrl, String pageText) throws IOException {
+        String path = "";
+        try {
+            path = new URL(pageUrl).getPath().toLowerCase(Locale.US);
+        } catch (MalformedURLException ignored) {
+            return null;
+        }
+        if (!path.contains("/xvideos/")) {
+            return null;
+        }
+        String videoId = extractNjavVideoId(pageText);
+        if (videoId.isEmpty()) {
+            return null;
+        }
+        String origin = firstNonEmpty(originFromUrl(pageUrl), "https://www.njav.com");
+        String apiText = readText(origin + "/api/v/" + videoId + "/videos", pageUrl);
+        JSONObject payload = parseJsonObject(apiText);
+        JSONArray entries = payload == null ? null : payload.optJSONArray("data");
+        if (entries == null || entries.length() == 0) {
+            return null;
+        }
+        String poster = "";
+        Matcher posterMatcher = NJAV_POSTER.matcher(pageText == null ? "" : pageText);
+        if (posterMatcher.find()) {
+            poster = htmlDecoded(posterMatcher.group(1)).trim();
+        }
+        List<String> candidates = new ArrayList<>();
+        String firstPlayerUrl = "";
+        for (int i = 0; i < entries.length(); i++) {
+            JSONObject entry = entries.optJSONObject(i);
+            if (entry == null) {
+                continue;
+            }
+            String vvUrl = joinUrl(origin + "/", entry.optString("url", ""));
+            if (vvUrl.isEmpty()) {
+                continue;
+            }
+            if (!poster.isEmpty() && !vvUrl.contains("poster=")) {
+                vvUrl = vvUrl + (vvUrl.contains("?") ? "&" : "?") + "poster=" + urlEncode(poster);
+            }
+            String vvText = readText(vvUrl, pageUrl);
+            Matcher frameMatcher = NJAV_VIDEO_FRAME_SRC.matcher(vvText);
+            if (!frameMatcher.find()) {
+                continue;
+            }
+            String playerUrl = joinUrl(vvUrl, htmlDecoded(frameMatcher.group(1)));
+            if (playerUrl.isEmpty()) {
+                continue;
+            }
+            String playerText = readText(playerUrl, vvUrl);
+            String mediaUrl = extractNjavPlayerM3u8(playerText, playerUrl);
+            if (!mediaUrl.isEmpty()) {
+                candidates.add(mediaUrl);
+                if (firstPlayerUrl.isEmpty()) {
+                    firstPlayerUrl = playerUrl;
+                }
+            }
+        }
+        candidates = dedupeMediaCandidates(candidates);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("njav", candidates.get(0), candidates, firstNonEmpty(firstPlayerUrl, pageUrl));
+    }
+
+    private String extractNjavVideoId(String pageText) {
+        Matcher matcher = NJAV_VIDEO_ID.matcher(pageText == null ? "" : pageText);
+        if (!matcher.find()) {
+            return "";
+        }
+        for (int i = 1; i <= matcher.groupCount(); i++) {
+            String value = matcher.group(i);
+            if (value != null && !value.trim().isEmpty()) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
+    private String extractNjavPlayerM3u8(String playerText, String playerUrl) {
+        Matcher matcher = NJAV_PLAYER_M3U8.matcher(playerText == null ? "" : playerText);
+        if (!matcher.find()) {
+            return "";
+        }
+        for (int i = 1; i <= matcher.groupCount(); i++) {
+            String value = matcher.group(i);
+            if (value == null || value.trim().isEmpty()) {
+                continue;
+            }
+            String candidate = joinUrl(playerUrl, htmlDecoded(value).replace("\\/", "/").trim());
+            if (isMediaUrl(candidate)) {
+                return candidate;
+            }
+        }
+        return "";
+    }
+
+    private SiteMediaResult resolveNjavTvMedia(String pageUrl, String pageText) {
+        String mediaUrl = extractNjavTvPlaylist(pageText);
+        if (mediaUrl.isEmpty()) {
+            return null;
+        }
+        List<String> candidates = dedupeMediaCandidates(Collections.singletonList(mediaUrl));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("njavtv", candidates.get(0), candidates, pageUrl);
+    }
+
+    private String extractNjavTvPlaylist(String pageText) {
+        Matcher matcher = NJAVTV_SURRIT_PLAYLIST.matcher(pageText == null ? "" : pageText);
+        if (!matcher.find()) {
+            return "";
+        }
+        for (int i = 1; i <= matcher.groupCount(); i++) {
+            String value = matcher.group(i);
+            if (value == null || value.trim().isEmpty()) {
+                continue;
+            }
+            String candidate = htmlDecoded(value).replace("\\/", "/").trim();
+            if (isHlsUrl(candidate)) {
+                return candidate;
+            }
+        }
+        return "";
+    }
+
+    private SiteMediaResult resolveJableMedia(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        Matcher matcher = JABLE_HLS.matcher(pageText == null ? "" : pageText);
+        while (matcher.find()) {
+            for (int i = 1; i <= matcher.groupCount(); i++) {
+                String value = matcher.group(i);
+                if (value == null || value.trim().isEmpty()) {
+                    continue;
+                }
+                String candidate = joinUrl(pageUrl, htmlDecoded(value).replace("\\/", "/").trim());
+                if (isHlsUrl(candidate)) {
+                    candidates.add(candidate);
+                }
+            }
+        }
+        candidates = dedupeMediaCandidates(candidates);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("jable", candidates.get(0), candidates, "https://jable.tv/");
+    }
+
+    private SiteMediaResult resolve85xVideoMedia(String pageUrl, String pageText) {
+        return resolvePageSourceMedia("85xvideo", pageUrl, pageText, pageUrl);
+    }
+
+    private SiteMediaResult resolveTinyAVideoMedia(String pageUrl, String pageText) {
+        return resolvePageSourceMedia("tinyavideo", pageUrl, pageText, pageUrl);
+    }
+
+    private SiteMediaResult resolvePageSourceMedia(String sourceSite, String pageUrl, String pageText, String refererUrl) {
+        List<String> candidates = new ArrayList<>(extractMediaCandidates(pageText == null ? "" : pageText, pageUrl));
+        Matcher sourceMatcher = SOURCE_SRC.matcher(pageText == null ? "" : pageText);
+        while (sourceMatcher.find()) {
+            String candidate = joinUrl(pageUrl, htmlDecoded(sourceMatcher.group(1)).replace("\\/", "/").trim());
+            if (isMediaUrl(candidate) && !looksLikeImageUrl(candidate)) {
+                candidates.add(candidate);
+            }
+        }
+        candidates = dedupeMediaCandidates(candidates);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult(sourceSite, candidates.get(0), candidates, refererUrl);
+    }
+
+    private SiteMediaResult resolveSupJavMedia(String pageUrl, String pageText) throws IOException {
+        String text = pageText == null ? "" : pageText;
+        String bg = "";
+        Matcher bgMatcher = SUPJAV_BG.matcher(text);
+        if (bgMatcher.find()) {
+            bg = htmlDecoded(bgMatcher.group(1)).trim();
+        }
+        Matcher serverMatcher = SUPJAV_SERVER_LINK.matcher(text);
+        List<String> candidates = new ArrayList<>();
+        String firstReferer = "";
+        while (serverMatcher.find()) {
+            String token = htmlDecoded(serverMatcher.group(1)).trim();
+            if (token.isEmpty()) {
+                continue;
+            }
+            String playerUrl = "https://lk1.supremejav.com/supjav.php?l=" + urlEncode(token) + "&bg=" + urlEncode(bg);
+            String childUrl = "https://lk1.supremejav.com/supjav.php?c=" + urlEncode(reverse(token));
+            String playerText;
+            try {
+                playerText = readText(playerUrl, pageUrl);
+            } catch (IOException ignored) {
+                continue;
+            }
+            Matcher childMatcher = SUPJAV_CHILD_SRC.matcher(playerText);
+            if (childMatcher.find()) {
+                childUrl = joinUrl(playerUrl, htmlDecoded(childMatcher.group(1)));
+            }
+            String childText;
+            try {
+                childText = readText(childUrl, playerUrl);
+            } catch (IOException ignored) {
+                continue;
+            }
+            candidates.addAll(extractMediaCandidates(childText, childUrl));
+            Matcher hlsMatcher = SUPJAV_HLS_FIELD.matcher(childText);
+            while (hlsMatcher.find()) {
+                String candidate = joinUrl(childUrl, htmlDecoded(hlsMatcher.group(1)).replace("\\/", "/").trim());
+                if (isMediaUrl(candidate)) {
+                    candidates.add(candidate);
+                }
+            }
+            if (firstReferer.isEmpty()) {
+                firstReferer = childUrl;
+            }
+        }
+        candidates = dedupeMediaCandidates(candidates);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("supjav", candidates.get(0), candidates, firstNonEmpty(firstReferer, pageUrl));
+    }
+
+    private List<String> decodeBestJavPornPlayerSources(String playerText, String playerUrl) {
+        List<String> candidates = new ArrayList<>();
+        Matcher configMatcher = PLAYER_DATA_CONFIG.matcher(playerText == null ? "" : playerText);
+        if (!configMatcher.find()) {
+            return candidates;
+        }
+        try {
+            String configJson = decodeBestJavPornPlayerConfig(htmlDecoded(configMatcher.group(1)), playerUrl);
+            JSONObject config = new JSONObject(configJson);
+            String sourceBlob = config.optString("src", "");
+            if (!sourceBlob.isEmpty()) {
+                String sourceJson = new String(base64Decode(sourceBlob), StandardCharsets.UTF_8);
+                JSONArray sources = new JSONArray(sourceJson);
+                for (int i = 0; i < sources.length(); i++) {
+                    JSONObject entry = sources.optJSONObject(i);
+                    if (entry == null) {
+                        continue;
+                    }
+                    String candidate = firstNonEmpty(entry.optString("file", ""), firstNonEmpty(entry.optString("src", ""), entry.optString("url", "")));
+                    candidate = joinUrl(playerUrl, candidate);
+                    if (isMediaUrl(candidate)) {
+                        candidates.add(candidate);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Keep the generic media extraction fallback alive when a player config changes.
+        }
+        return candidates;
+    }
+
+    private String bestJavPornDex(String videoId, String encrypted) {
+        String key = reverse(base64EncodeLatin1(videoId + "_0x58fe15"));
+        byte[] decrypted = rc4(base64Decode(encrypted), key);
+        return new String(base64Decode(new String(decrypted, StandardCharsets.ISO_8859_1)), StandardCharsets.UTF_8);
+    }
+
+    private String javDockFme(String videoId, String encrypted, boolean encodeSources) {
+        String suffix = encodeSources ? "_0x48107a" : "undefined";
+        String key = reverse(base64EncodeLatin1(videoId + suffix));
+        byte[] decrypted = rc4(base64Decode(encrypted), key);
+        return new String(base64Decode(new String(decrypted, StandardCharsets.ISO_8859_1)), StandardCharsets.UTF_8);
+    }
+
+    private String decodeBestJavPornPlayerConfig(String dataConfig, String playerUrl) {
+        String pathQuery = "";
+        try {
+            URL parsed = new URL(playerUrl);
+            pathQuery = parsed.getPath() + (parsed.getQuery() == null ? "" : "?" + parsed.getQuery());
+        } catch (MalformedURLException ignored) {
+            pathQuery = playerUrl == null ? "" : playerUrl;
+        }
+        String seed = base64EncodeLatin1(pathQuery);
+        String keySeed = seed.length() > 4 ? seed.substring(4, Math.min(20, seed.length())) : seed;
+        String key = reverse(base64EncodeLatin1(keySeed + "_0x59a0e4"));
+        byte[] decrypted = rc4(base64Decode(dataConfig), key);
+        return new String(base64Decode(new String(decrypted, StandardCharsets.ISO_8859_1)), StandardCharsets.UTF_8);
+    }
+
+    private String postForm(String rawUrl, String body, String refererUrl) throws IOException {
+        HttpURLConnection connection = open(rawUrl, refererUrl);
+        connection.setRequestMethod("POST");
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+        connection.setRequestProperty("X-Requested-With", "XMLHttpRequest");
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        connection.setRequestProperty("Content-Length", String.valueOf(bytes.length));
+        try (BufferedOutputStream output = new BufferedOutputStream(connection.getOutputStream())) {
+            output.write(bytes);
+        }
+        int code = connection.getResponseCode();
+        if (code >= HttpURLConnection.HTTP_BAD_REQUEST) {
+            throw httpStatusException(connection, rawUrl, code);
+        }
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), charsetFromContentType(connection.getContentType())))) {
+            StringBuilder builder = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                builder.append(line).append('\n');
+            }
+            return builder.toString();
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private JSONObject parseJsonObject(String text) {
+        try {
+            return new JSONObject(text == null ? "{}" : text);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private boolean payloadStatus(JSONObject payload) {
+        Object value = payload == null ? null : payload.opt("status");
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        String text = value == null ? "" : String.valueOf(value).trim();
+        return "1".equals(text) || "true".equalsIgnoreCase(text) || "ok".equalsIgnoreCase(text);
+    }
+
+    private List<String> siteCandidateLabels(String sourceSite, List<String> candidates) {
+        List<String> labels = new ArrayList<>();
+        for (String candidate : candidates) {
+            labels.add(sourceSite + " player " + (isHlsUrl(candidate) ? "HLS" : isDashUrl(candidate) ? "DASH" : "media"));
+        }
+        return labels;
+    }
+
+    private List<String> dedupeMediaCandidates(List<String> candidates) {
+        List<String> out = new ArrayList<>();
+        for (String candidate : candidates) {
+            if (candidate != null && isMediaUrl(candidate) && !looksLikeImageUrl(candidate) && !out.contains(candidate)) {
+                out.add(candidate);
+            }
+        }
+        return out;
+    }
+
+    private boolean looksLikeImageUrl(String rawUrl) {
+        String lowered = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        return lowered.matches(".*\\.(?:jpg|jpeg|png|gif|webp)(?:[?#].*)?$");
+    }
+
+    private byte[] base64Decode(String value) {
+        String text = value == null ? "" : value.trim().replace('-', '+').replace('_', '/');
+        while (text.length() % 4 != 0) {
+            text += "=";
+        }
+        return Base64.decode(text, Base64.DEFAULT);
+    }
+
+    private String base64EncodeLatin1(String value) {
+        return Base64.encodeToString((value == null ? "" : value).getBytes(StandardCharsets.ISO_8859_1), Base64.NO_WRAP);
+    }
+
+    private byte[] rc4(byte[] data, String key) {
+        byte[] keyBytes = (key == null ? "" : key).getBytes(StandardCharsets.ISO_8859_1);
+        if (keyBytes.length == 0) {
+            return new byte[0];
+        }
+        int[] state = new int[256];
+        for (int i = 0; i < state.length; i++) {
+            state[i] = i;
+        }
+        int j = 0;
+        for (int i = 0; i < state.length; i++) {
+            j = (j + state[i] + (keyBytes[i % keyBytes.length] & 0xff)) & 0xff;
+            int tmp = state[i];
+            state[i] = state[j];
+            state[j] = tmp;
+        }
+        byte[] output = new byte[data == null ? 0 : data.length];
+        int i = 0;
+        j = 0;
+        for (int n = 0; n < output.length; n++) {
+            i = (i + 1) & 0xff;
+            j = (j + state[i]) & 0xff;
+            int tmp = state[i];
+            state[i] = state[j];
+            state[j] = tmp;
+            output[n] = (byte) ((data[n] & 0xff) ^ state[(state[i] + state[j]) & 0xff]);
+        }
+        return output;
+    }
+
+    private String reverse(String value) {
+        return new StringBuilder(value == null ? "" : value).reverse().toString();
+    }
+
+    private String htmlDecoded(String value) {
+        String decoded = value == null ? "" : value;
+        decoded = decoded.replace("&amp;", "&")
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'")
+                .replace("&apos;", "'")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">");
+        return decoded;
+    }
+
+    private String urlEncode(String value) {
+        try {
+            return URLEncoder.encode(value == null ? "" : value, "UTF-8");
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private String shortMessage(Exception error) {

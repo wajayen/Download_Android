@@ -46,6 +46,7 @@ This Android app is a native port track for the desktop downloader in `downloade
 - `Content-Disposition` `filename*=` values now decode RFC 5987 percent-encoded filenames before safe filename cleanup, improving Traditional Chinese, Japanese, and other non-ASCII output names.
 - Direct HTTP downloads avoid overwriting an existing file when a server-provided filename collides, using numbered names such as `video (2).mp4`.
 - Foreground download service and notification progress for long-running downloads.
+- Download notifications now use the current status/progress as the notification title instead of repeating the app/downloader name inside the notification body.
 - Persistent JSON task queue through SharedPreferences.
 - Bounded multi-task queue execution with up to two active downloads.
 - Concurrency slot changes are written to the structured runtime activity log.
@@ -66,11 +67,20 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Android text response parsing now honors `Content-Type` charset values for pages, HLS/DASH manifests, and Anime1 API responses, falling back to UTF-8.
 - Android HTTP, page, API, HLS, and DASH reads now report clear HTTP status failures and reject byte-range segment responses that are not returned as `206 Partial Content`.
 - Android input supports browser `Copy as cURL` text and avoids queuing URLs found only inside pasted header values such as Referer.
-- Android input now accepts video titles and JAV-style codes as search queries, searches supported video sites in the background, and queues the first resolvable result for download.
+- Android input now accepts video titles and JAV-style codes as search queries, searches supported video sites in the background, and shows a selectable result list before queueing the chosen URL.
+- Android search results are presented as thumbnail, title/code, and source-site rows, so users can choose the exact video page before download starts.
 - Android search query detection now treats pasted media filenames by their stem, matching the desktop behavior for inputs such as `title.mp4`, `code.m3u8`, or local-looking paths.
 - Android video search now seeds supported site-search URLs before falling back to search-engine results, improving reliability for MovieFFM, Gimy/Xiaoya/MacCMS-like sites, and common JAV site clusters.
 - Android video search detects JAV-style codes and prioritizes JAV direct-code URLs plus JAV site-search candidates before general video sites.
 - Android JAV code search now seeds more direct detail-page variants for MissAV, Jable, NJAVTV, AVBebe, AVJoy, and GGJAV before falling back to site-search pages.
+- AVJoy pages now extract desktop-style `hlsN` player fields, prioritize `hls4` then `hls2`, and label those HLS candidates before generic media fallback sorting.
+- BestJavPorn and JavDock video pages now run desktop-style RC4/Base64 player API/config decoding in Android `DownloadEngine`, returning direct HLS/MP4 candidates before generic page traversal.
+- NJAV `/xvideos/` pages now run the desktop-style video-id API flow, follow the returned iframe player pages, and extract `PLAYER_CONFIG`/`m3u8` HLS candidates before generic traversal.
+- NJAVTV pages now extract desktop-style `surrit.com/.../playlist.m3u8` and `source =` HLS candidates before generic traversal.
+- Jable pages now extract desktop-style direct `.m3u8` and `hlsUrl` HLS candidates before generic traversal and keep the Jable referer for download.
+- 85xVideo pages now extract desktop-style page media URLs and `<source src>` candidates before generic traversal, filtering image placeholders from media candidates.
+- TinyAVideo pages now extract desktop-style page media URLs before generic traversal, sharing the image-placeholder filtering used by 85xVideo.
+- SupJAV pages now follow desktop-style `btn-server`/`data-link` playback servers through `lk1.supremejav.com` player and child pages, extracting direct HLS/MP4 candidates.
 - Android JAV/adult video search now adds site-search coverage for 85xVideo, TinyAVideo, GoodAV17, and TKTube, matching sites already recognized by the Android resolver.
 - Android resolver now recognizes more MacCMS-like search result paths such as `/voddetail/`, `/voddetail2/`, and `/title/`, plus additional Ikanbot/YFSP/Olevod/777TV search entry points.
 - Android video search now fetches the first supported site-search pages, extracts ranked detail/play-page links, and keeps the search page itself as a fallback candidate.
@@ -166,7 +176,7 @@ This Android app is a native port track for the desktop downloader in `downloade
 
 ## Not Yet Ported From Desktop
 
-- Full deep per-site parsers for MovieFFM, Gimy, XiaoyaKankan, YFSP, iQIYI, YouTube, Dailymotion, Bilibili, Ikanbot, social platforms, and adult/JAV sites; MovieFFM now has first external-host source extraction plus Mixdrop `wurl` media extraction, broader Dood-family host detection, direct Mixdrop/Dood/Evoload external-player site recognition, and drama/episode candidate reconstruction, Gimy now has first desktop-style iframe construction from `player_data`, parse API candidate extraction, and play-to-detail fallback reconstruction, XiaoyaKankan now has broader play-page plus `var pp` media candidate extraction, and GoodAV17/HohoJ/GGJAV now decode GGJAV embed and obfuscated player payloads into direct media candidates, while NNYY, 3KOR, DramaSQ, Olevod/OleHDTV, Thanju, 99iTV, and 777TV currently have MacCMS-like generic traversal, and Dailymotion/YouTube/Bilibili/iQIYI/Ikanbot/YFSP/social platforms plus the first adult/JAV cluster currently have site detection and generic stream/play-page extraction only.
+- Full deep per-site parsers for MovieFFM, Gimy, XiaoyaKankan, YFSP, iQIYI, YouTube, Dailymotion, Bilibili, Ikanbot, social platforms, and adult/JAV sites; MovieFFM now has first external-host source extraction plus Mixdrop `wurl` media extraction, broader Dood-family host detection, direct Mixdrop/Dood/Evoload external-player site recognition, and drama/episode candidate reconstruction, Gimy now has first desktop-style iframe construction from `player_data`, parse API candidate extraction, and play-to-detail fallback reconstruction, XiaoyaKankan now has broader play-page plus `var pp` media candidate extraction, GoodAV17/HohoJ/GGJAV now decode GGJAV embed and obfuscated player payloads into direct media candidates, AVJoy now extracts desktop-style `hlsN` HLS fields, BestJavPorn/JavDock now decode their RC4/Base64 player API/config chain, NJAV now follows its video-id API/iframe/`PLAYER_CONFIG` HLS chain, NJAVTV now extracts its surrit playlist HLS candidates, Jable now extracts direct `.m3u8`/`hlsUrl` HLS candidates with a site referer, 85xVideo now extracts media and `<source>` candidates while filtering image placeholders, TinyAVideo now extracts page media candidates with the same media filtering, and SupJAV now follows playback server pages into direct HLS/MP4 candidates, while NNYY, 3KOR, DramaSQ, Olevod/OleHDTV, Thanju, 99iTV, and 777TV currently have MacCMS-like generic traversal, and Dailymotion/YouTube/Bilibili/iQIYI/Ikanbot/YFSP/social platforms plus the remaining adult/JAV cluster currently have site detection and generic stream/play-page extraction only.
 - yt-dlp integration and plugin support.
 - ffmpeg/ffprobe based remux, transcode, deeper duration validation, broad fallback routing, and full multi-audio/multi-period DASH mux parity.
 - Full browser session reuse and impersonation behavior equivalent to `curl_cffi` and desktop browser workflows; pasted Cookie/Referer plus selected request headers, basic Referer/Origin propagation, and persistent app cookie storage are already ported.

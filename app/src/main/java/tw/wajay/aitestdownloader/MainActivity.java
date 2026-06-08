@@ -9,6 +9,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -25,6 +27,7 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.ScrollView;
@@ -33,6 +36,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -511,8 +517,7 @@ public final class MainActivity extends Activity {
             if (fileName.isEmpty()) {
                 fileName = FileNames.sanitize(query) + ".mp4";
             }
-            startDownloaderService(DownloadService.startIntent(this, VideoSearchResolver.searchUri(query), fileName, "", "", "{}", playAfterThreshold));
-            statusText.setText(queueLine(fileName, 0L, -1L));
+            showSearchResults(query, fileName, playAfterThreshold);
             return;
         }
 
@@ -540,6 +545,179 @@ public final class MainActivity extends Activity {
             fileNameInput.setText("");
         }
         statusText.setText(queuedPreview.toString());
+    }
+
+    private void showSearchResults(String query, String fileName, boolean playAfterThreshold) {
+        statusText.setText(getString(R.string.status_searching_results));
+        new Thread(() -> {
+            try {
+                List<VideoSearchResolver.Result> results = VideoSearchResolver.search(query);
+                runOnUiThread(() -> showSearchResultDialog(query, fileName, playAfterThreshold, results));
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    Toast.makeText(this, getString(R.string.toast_search_failed), Toast.LENGTH_SHORT).show();
+                    statusText.setText(getString(R.string.status_idle));
+                });
+            }
+        }, "video-search-ui").start();
+    }
+
+    private void showSearchResultDialog(
+            String query,
+            String fileName,
+            boolean playAfterThreshold,
+            List<VideoSearchResolver.Result> results) {
+        if (results == null || results.isEmpty()) {
+            Toast.makeText(this, getString(R.string.toast_no_search_results), Toast.LENGTH_SHORT).show();
+            statusText.setText(getString(R.string.status_idle));
+            return;
+        }
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(dp(12), dp(12), dp(12), dp(4));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(list);
+        final AlertDialog[] holder = new AlertDialog[1];
+        for (VideoSearchResolver.Result result : results) {
+            list.addView(searchResultRow(result, holder, fileName, playAfterThreshold), matchWrap());
+        }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.section_search_results))
+                .setView(scroll)
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        holder[0] = dialog;
+        dialog.setOnDismissListener(ignored -> {
+            if (statusText != null && getString(R.string.status_searching_results).contentEquals(statusText.getText())) {
+                statusText.setText(taskStore.summary());
+            }
+        });
+        dialog.show();
+    }
+
+    private View searchResultRow(
+            VideoSearchResolver.Result result,
+            AlertDialog[] holder,
+            String fileName,
+            boolean playAfterThreshold) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(8), dp(8), dp(8), dp(8));
+        row.setBackground(roundedBackground(Color.rgb(253, 252, 250), BORDER, 1, 8));
+
+        ImageView thumbnail = new ImageView(this);
+        thumbnail.setContentDescription(getString(R.string.search_result_thumbnail_description));
+        thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        thumbnail.setBackground(roundedBackground(SURFACE_TINT, BORDER, 1, 6));
+        thumbnail.setImageResource(android.R.drawable.ic_menu_gallery);
+        row.addView(thumbnail, new LinearLayout.LayoutParams(dp(96), dp(64)));
+
+        LinearLayout textColumn = new LinearLayout(this);
+        textColumn.setOrientation(LinearLayout.VERTICAL);
+        textColumn.setPadding(dp(10), 0, 0, 0);
+        TextView title = new TextView(this);
+        title.setText(displaySearchTitle(result));
+        title.setTextColor(TEXT_PRIMARY);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setTextSize(15);
+        title.setMaxLines(2);
+        textColumn.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView site = new TextView(this);
+        site.setText(displaySearchSite(result));
+        site.setTextColor(TEXT_SECONDARY);
+        site.setTextSize(13);
+        site.setMaxLines(1);
+        textColumn.addView(site, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        row.addView(textColumn, new LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1.0f));
+
+        row.setOnClickListener(view -> {
+            if (holder[0] != null) {
+                holder[0].dismiss();
+            }
+            queueSelectedSearchResult(result, fileName, playAfterThreshold);
+        });
+        loadThumbnail(thumbnail, result.thumbnailUrl);
+        return row;
+    }
+
+    private void queueSelectedSearchResult(VideoSearchResolver.Result result, String requestedName, boolean playAfterThreshold) {
+        String fileName = FileNames.sanitize(requestedName);
+        if (fileName.isEmpty()) {
+            fileName = FileNames.sanitize(displaySearchTitle(result)) + ".mp4";
+        }
+        if (fileName.isEmpty() || ".mp4".equals(fileName)) {
+            fileName = "video.mp4";
+        }
+        startDownloaderService(DownloadService.startIntent(this, result.url, fileName, result.refererUrl, "", "{}", playAfterThreshold));
+        fileNameInput.setText(fileName);
+        statusText.setText(queueLine(fileName, 0L, -1L));
+    }
+
+    private String displaySearchTitle(VideoSearchResolver.Result result) {
+        String title = result == null || result.title == null ? "" : result.title.trim();
+        if (title.contains(": ")) {
+            title = title.substring(title.indexOf(": ") + 2).trim();
+        }
+        if (!title.isEmpty() && !"embedded link".equalsIgnoreCase(title)) {
+            return title;
+        }
+        String fallback = result == null ? "" : Uri.parse(result.url).getLastPathSegment();
+        fallback = fallback == null ? "" : fallback.trim();
+        return fallback.isEmpty() ? getString(R.string.search_result_no_title) : fallback;
+    }
+
+    private String displaySearchSite(VideoSearchResolver.Result result) {
+        String site = result == null || result.sourceSite == null ? "" : result.sourceSite.trim();
+        if (!site.isEmpty() && !"generic".equals(site)) {
+            return site;
+        }
+        try {
+            String host = Uri.parse(result.url).getHost();
+            if (host != null && !host.trim().isEmpty()) {
+                return host;
+            }
+        } catch (Exception ignored) {
+            // Fall through to the localized unknown-site label.
+        }
+        return getString(R.string.search_result_site_unknown);
+    }
+
+    private void loadThumbnail(ImageView target, String rawUrl) {
+        String url = rawUrl == null ? "" : rawUrl.trim();
+        if (url.isEmpty()) {
+            return;
+        }
+        new Thread(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(url).openConnection();
+                connection.setConnectTimeout(7000);
+                connection.setReadTimeout(9000);
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36");
+                connection.setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
+                try (InputStream input = connection.getInputStream()) {
+                    Bitmap bitmap = BitmapFactory.decodeStream(input);
+                    if (bitmap != null) {
+                        runOnUiThread(() -> target.setImageBitmap(bitmap));
+                    }
+                }
+            } catch (Exception ignored) {
+                // Keep the built-in gallery placeholder when a search page has no reachable thumbnail.
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
+            }
+        }, "search-thumbnail").start();
     }
 
     private BrowserRequestContext parseBrowserRequestContext(String text) {

@@ -2,7 +2,7 @@
 
 `Download_Android` 是 Windows 版「下載者」的 Android 原生移植專案。目標是在手機上提供接近桌面版的影片搜尋、解析、下載、續傳、播放與診斷能力，同時維持 Android 友善的操作方式。
 
-目前 Android 版本：`0.140.0`（`versionCode 140`）。
+目前 Android 版本：`0.150.0`（`versionCode 150`）。
 
 ## App 特色
 
@@ -22,6 +22,16 @@
 - v0.138.0: Gimy iframe/player 頁會展開 `parse.php?url=...` API 候選與 iframe `url=` 內的直接媒體候選，並套用接近 Windows 版的 Gimy 串流排序。
 - v0.139.0: Gimy 播放頁會反推出 `/title/`、`/vod/`、`/detail/`、`/voddetail/` 詳情頁備援候選，parse 回應也會辨識 `playurl` 媒體欄位。
 - v0.140.0: MovieFFM 劇集頁會提取 `/drama/` 季/詳情頁、JSON `name`/`url` 集數，以及頁面中的 `/play/`、`/vodplay/`、`/episode/` 播放頁候選。
+- v0.141.0: 下載通知不再於通知內容內重複顯示「下載器/Downloader」，通知標題直接顯示目前下載狀態與進度。
+- v0.142.0: AVJoy 頁面會依照 Windows 版提取 `hls1`、`hls2`、`hls4` 等 HLS 欄位，並優先選擇較高順位的播放候選。
+- v0.143.0: BestJavPorn 與 JavDock 影片頁新增 Windows 版同源的 RC4/Base64 播放器設定解碼，解析成功時可直接取得 HLS/MP4 候選。
+- v0.144.0: NJAV 影片頁新增 Windows 版同源的 video id、AJAX 影片清單、iframe player 與 `PLAYER_CONFIG` HLS 解析流程。
+- v0.145.0: NJAVTV 影片頁新增 Windows 版同源的 `surrit.com/.../playlist.m3u8` 與 `source =` HLS 解析路徑。
+- v0.146.0: Jable 影片頁新增 Windows 版同源的直接 `.m3u8` 與 `hlsUrl` HLS 解析路徑，並套用 Jable referer。
+- v0.147.0: 85xVideo 影片頁新增 Windows 版同源的媒體 URL 與 `<source src>` 候選抽取，並排除圖片誤判。
+- v0.148.0: TinyAVideo 影片頁新增 Windows 版同源的媒體 URL 候選抽取，讓番號搜尋命中頁面後可直接取得 HLS/MP4 候選。
+- v0.149.0: SupJAV 影片頁新增 Windows 版同源的播放 server 追蹤，會由 `btn-server`/`data-link` 進入 supremejav player 與 child page 抽取 HLS/MP4 候選。
+- v0.150.0: 搜尋影片名稱或番號時不再自動下載第一個結果，改為先列出縮圖、檔名/番號、站台名稱，由使用者選擇要下載的網址。
 ## 下載功能
 
 - 支援直接貼上或分享影片網址到 App。

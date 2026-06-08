@@ -179,8 +179,7 @@ public final class DownloadService extends Service {
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
         builder.setSmallIcon(android.R.drawable.stat_sys_download)
-                .setContentTitle(getString(R.string.notification_title_downloader))
-                .setContentText(text)
+                .setContentTitle(text)
                 .setContentIntent(contentIntent)
                 .setOngoing(ongoing)
                 .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.notification_action_cancel), cancelIntent);
@@ -188,7 +187,7 @@ public final class DownloadService extends Service {
         if (total > 0L) {
             int progress = (int) Math.max(0L, Math.min(100L, downloaded * 100L / total));
             builder.setProgress(100, progress, false)
-                    .setContentText(text + " " + progress + "%");
+                    .setContentTitle(text + " " + progress + "%");
         } else if (ongoing) {
             builder.setProgress(0, 0, true);
         }

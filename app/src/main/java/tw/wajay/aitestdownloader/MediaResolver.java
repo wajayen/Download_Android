@@ -79,6 +79,9 @@ final class MediaResolver {
     private static final Pattern SOCIAL_JSON_MEDIA_URL = Pattern.compile(
             "\"(?:video_url|playable_url|playable_url_quality_hd|browser_native_hd_url|browser_native_sd_url|contentUrl|download_url|media_url|source|src|url)\"\\s*:\\s*\"((?:https?:\\\\?/\\\\?/|\\\\?/\\\\?/)[^\"\\\\]*(?:\\\\.[A-Za-z0-9]+|/video/|/ext_tw_video/|/video/t1/|/v/t42\\.|/v/t50\\.|fbcdn|cdninstagram|twimg)[^\"]*)\"",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern AVJOY_HLS_FIELD = Pattern.compile(
+            "[\"'](hls\\d+)[\"']\\s*:\\s*[\"']([^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern TWITTER_VARIANT_URL = Pattern.compile(
             "\"url\"\\s*:\\s*\"((?:https?:\\\\?/\\\\?/|\\\\?/\\\\?/)[^\"]+(?:video\\.twimg\\.com|\\.m3u8|\\.mp4)[^\"]*)\"",
             Pattern.CASE_INSENSITIVE);
@@ -155,6 +158,7 @@ final class MediaResolver {
         addSitePlayLinkCandidates(candidates, labels, pageText, pageUrl, site);
         addAniGamerCandidates(candidates, labels, pageText, pageUrl, site);
         addSocialCandidates(candidates, labels, pageText, pageUrl, site);
+        addAvJoyCandidates(candidates, labels, pageText, pageUrl, site);
         sortCandidates(site, candidates);
         String primary = candidates.isEmpty() ? null : candidates.get(0);
         return new Result(site, primary, primary != null && isMediaUrl(primary), candidates, labelList(candidates, labels));
@@ -615,6 +619,40 @@ final class MediaResolver {
                 putLabel(labels, resolved, label);
             }
         }
+    }
+
+    private static void addAvJoyCandidates(List<String> out, Map<String, String> labels, String pageText, String pageUrl, String site) {
+        if (!"avjoy".equals(site)) {
+            return;
+        }
+        Set<String> seen = new LinkedHashSet<>(out);
+        List<AvJoyCandidate> candidates = new ArrayList<>();
+        Matcher matcher = AVJOY_HLS_FIELD.matcher(htmlDecoded(pageText == null ? "" : pageText));
+        while (matcher.find()) {
+            String key = matcher.group(1);
+            String candidate = resolveUrl(pageUrl, matcher.group(2));
+            if (candidate != null && isMediaUrl(candidate) && candidate.toLowerCase(Locale.US).contains(".m3u8")) {
+                candidates.add(new AvJoyCandidate(avJoyHlsPriority(key), candidate, "AVJoy " + key));
+            }
+        }
+        Collections.sort(candidates, Comparator.comparingInt(item -> item.priority));
+        for (AvJoyCandidate candidate : candidates) {
+            if (seen.add(candidate.url)) {
+                out.add(candidate.url);
+                putLabel(labels, candidate.url, candidate.label);
+            }
+        }
+    }
+
+    private static int avJoyHlsPriority(String key) {
+        String lowered = key == null ? "" : key.toLowerCase(Locale.US);
+        if ("hls4".equals(lowered)) {
+            return 0;
+        }
+        if ("hls2".equals(lowered)) {
+            return 10;
+        }
+        return 20;
     }
 
     private static void addPlayerObjectCandidates(List<String> out, Map<String, String> labels, String pageText, String pageUrl) {
@@ -1441,6 +1479,13 @@ final class MediaResolver {
             if (lowered.contains("video.twimg.com")) {
                 score -= 100;
             }
+        } else if ("avjoy".equals(sourceSite)) {
+            if (lowered.contains(".m3u8")) {
+                score -= 140;
+            }
+            if (lowered.contains("/av1/") || lowered.contains("/video/")) {
+                score -= 40;
+            }
         } else if (isAdultLikeSite(sourceSite)) {
             if (isMediaUrl(lowered)) {
                 score -= 100;
@@ -1478,6 +1523,18 @@ final class MediaResolver {
             score += 80;
         }
         return score;
+    }
+
+    private static final class AvJoyCandidate {
+        final int priority;
+        final String url;
+        final String label;
+
+        AvJoyCandidate(int priority, String url, String label) {
+            this.priority = priority;
+            this.url = url;
+            this.label = label;
+        }
     }
 
     private static int hostPenalty(String url, String[] preferredMarkers) {
