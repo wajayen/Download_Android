@@ -109,12 +109,16 @@ function Ensure-GhRelease {
         [Parameter(Mandatory = $true)]
         [string]$ReleaseNotes
     )
+    $repoSlug = Get-OriginRepoSlug
+    if (-not $repoSlug) {
+        throw "Could not determine GitHub repo slug from origin"
+    }
     if (Test-GitHubReleaseExists -ReleaseTag $ReleaseTag) {
-        Invoke-CheckedCommand -FilePath $gh -Arguments @("release", "upload", $ReleaseTag, $AssetPath, "--clobber")
-        Invoke-CheckedCommand -FilePath $gh -Arguments @("release", "edit", $ReleaseTag, "--title", $ReleaseTag, "--notes", $ReleaseNotes)
+        Invoke-CheckedCommand -FilePath $gh -Arguments @("release", "upload", $ReleaseTag, $AssetPath, "--clobber", "-R", $repoSlug)
+        Invoke-CheckedCommand -FilePath $gh -Arguments @("release", "edit", $ReleaseTag, "--title", $ReleaseTag, "--notes", $ReleaseNotes, "-R", $repoSlug)
         return
     }
-    Invoke-CheckedCommand -FilePath $gh -Arguments @("release", "create", $ReleaseTag, $AssetPath, "--title", $ReleaseTag, "--notes", $ReleaseNotes)
+    Invoke-CheckedCommand -FilePath $gh -Arguments @("release", "create", $ReleaseTag, $AssetPath, "--title", $ReleaseTag, "--notes", $ReleaseNotes, "-R", $repoSlug)
 }
 
 if ($VersionCode -le 0) {
