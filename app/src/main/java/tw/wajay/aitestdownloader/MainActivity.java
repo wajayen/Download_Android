@@ -132,6 +132,11 @@ public final class MainActivity extends Activity {
         clearButton.setOnClickListener(view -> clearFinishedTasks());
         root.addView(clearButton, matchWrap());
 
+        Button exportLogsButton = new Button(this);
+        exportLogsButton.setText("Export Logs");
+        exportLogsButton.setOnClickListener(view -> exportLogs());
+        root.addView(exportLogsButton, matchWrap());
+
         statusText = new TextView(this);
         statusText.setText(getString(R.string.status_idle));
         statusText.setTextSize(15);
@@ -238,6 +243,20 @@ public final class MainActivity extends Activity {
         int cleared = taskStore.clearFinishedTasks();
         Toast.makeText(this, "Cleared " + cleared + " finished task(s)", Toast.LENGTH_SHORT).show();
         refreshStatus();
+    }
+
+    private void exportLogs() {
+        EventLog eventLog = new EventLog(this);
+        eventLog.write("log_export", "", "manual export requested");
+        try {
+            String exported = OutputExporter.exportToPublicDownloads(this, eventLog.file());
+            Toast.makeText(this, "Logs exported", Toast.LENGTH_SHORT).show();
+            statusText.setText("Logs exported\n" + exported + "\n" + eventLog.path());
+        } catch (Exception error) {
+            String message = error.getMessage() == null ? error.toString() : error.getMessage();
+            Toast.makeText(this, "Log export failed", Toast.LENGTH_SHORT).show();
+            statusText.setText("Log export failed\n" + message + "\n" + eventLog.path());
+        }
     }
 
     private void startDownloaderService(Intent intent) {

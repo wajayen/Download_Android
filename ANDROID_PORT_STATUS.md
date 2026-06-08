@@ -15,6 +15,7 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Failed or cancelled tasks can be requeued from the Android UI.
 - Finished, failed, and cancelled task history can be cleared from the Android UI.
 - Structured runtime activity log at the app-specific Documents `logs/activity.jsonl`.
+- Android UI can export the structured runtime activity log to public Downloads for device-side diagnostics.
 - Parser registry foundation through `MediaResolver`.
 - First site-aware candidate extraction and ordering for MovieFFM, Gimy, and XiaoyaKankan style pages.
 - Recursive player/iframe/API page resolution up to four levels deep.

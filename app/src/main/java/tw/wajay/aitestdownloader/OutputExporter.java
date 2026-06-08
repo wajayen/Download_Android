@@ -86,6 +86,15 @@ final class OutputExporter {
         if (lowered.endsWith(".m4a")) {
             return "audio/mp4";
         }
+        if (lowered.endsWith(".jsonl")) {
+            return "application/x-ndjson";
+        }
+        if (lowered.endsWith(".json")) {
+            return "application/json";
+        }
+        if (lowered.endsWith(".txt") || lowered.endsWith(".log")) {
+            return "text/plain";
+        }
         return "application/octet-stream";
     }
 }

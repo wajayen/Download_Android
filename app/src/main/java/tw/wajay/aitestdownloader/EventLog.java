@@ -46,4 +46,8 @@ final class EventLog {
     String path() {
         return logFile.getAbsolutePath();
     }
+
+    File file() {
+        return logFile;
+    }
 }
