@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">下載者</string>
+    <string name="build_ready">支援背景下載、續傳、簡易 HLS m3u8 合併與分享網址。</string>
+    <string name="hint_url">https://example.com/video.mp4 或 index.m3u8</string>
+    <string name="hint_file_name">檔名（可留空自動判斷）</string>
+    <string name="action_download">開始下載</string>
+    <string name="action_cancel">取消任務</string>
+    <string name="action_refresh">讀取最近狀態</string>
+    <string name="status_idle">尚未開始下載</string>
+</resources>
