@@ -25,6 +25,9 @@ public final class DownloadService extends Service {
     static final String ACTION_WAKE = "tw.wajay.aitestdownloader.WAKE";
     static final String EXTRA_URL = "url";
     static final String EXTRA_FILE_NAME = "file_name";
+    static final String EXTRA_REFERER = "referer";
+    static final String EXTRA_COOKIE_HEADER = "cookie_header";
+    static final String EXTRA_HEADERS_JSON = "headers_json";
 
     private static final String CHANNEL_ID = "downloads";
     private static final int NOTIFICATION_ID = 42;
@@ -35,11 +38,27 @@ public final class DownloadService extends Service {
     private EventLog eventLog;
     private final Map<String, DownloadEngine> activeEngines = new LinkedHashMap<>();
 
+    @Override
+    protected void attachBaseContext(Context newBase) {
+        super.attachBaseContext(LanguageSettings.wrap(newBase));
+    }
+
     static Intent startIntent(Context context, String url, String fileName) {
+        return startIntent(context, url, fileName, "", "");
+    }
+
+    static Intent startIntent(Context context, String url, String fileName, String referer, String cookieHeader) {
+        return startIntent(context, url, fileName, referer, cookieHeader, "{}");
+    }
+
+    static Intent startIntent(Context context, String url, String fileName, String referer, String cookieHeader, String headersJson) {
         Intent intent = new Intent(context, DownloadService.class);
         intent.setAction(ACTION_START);
         intent.putExtra(EXTRA_URL, url);
         intent.putExtra(EXTRA_FILE_NAME, fileName);
+        intent.putExtra(EXTRA_REFERER, referer == null ? "" : referer);
+        intent.putExtra(EXTRA_COOKIE_HEADER, cookieHeader == null ? "" : cookieHeader);
+        intent.putExtra(EXTRA_HEADERS_JSON, headersJson == null ? "{}" : headersJson);
         return intent;
     }
 
@@ -80,7 +99,7 @@ public final class DownloadService extends Service {
             }
             taskStore.cancelRunningOrQueued();
             eventLog.write("cancel", "", "cancel requested");
-            updateNotification("Cancelled", 0, 0, false);
+            updateNotification(getString(R.string.notification_cancelled), 0, 0, false);
             stopForeground(false);
             stopSelf();
             return START_NOT_STICKY;
@@ -89,6 +108,9 @@ public final class DownloadService extends Service {
         if (ACTION_START.equals(action)) {
             String url = intent.getStringExtra(EXTRA_URL);
             String fileName = intent.getStringExtra(EXTRA_FILE_NAME);
+            String referer = intent.getStringExtra(EXTRA_REFERER);
+            String cookieHeader = intent.getStringExtra(EXTRA_COOKIE_HEADER);
+            String headersJson = intent.getStringExtra(EXTRA_HEADERS_JSON);
             if (url == null || url.trim().isEmpty()) {
                 stopSelf(startId);
                 return START_NOT_STICKY;
@@ -97,13 +119,13 @@ public final class DownloadService extends Service {
             if (fileName == null || fileName.trim().isEmpty()) {
                 fileName = FileNames.choose(Uri.parse(url), "");
             }
-            JSONObject task = taskStore.enqueue(url, fileName);
+            JSONObject task = taskStore.enqueue(url, fileName, referer, cookieHeader, headersJson);
             eventLog.write("queued", task.optString("id"), url);
-            startForeground(NOTIFICATION_ID, buildNotification("Download queued", 0, 0, true));
+            startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.notification_download_queued), 0, 0, true));
             startNextAvailable();
         }
         if (ACTION_WAKE.equals(action)) {
-            startForeground(NOTIFICATION_ID, buildNotification("Queue starting", 0, 0, true));
+            startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.notification_queue_starting), 0, 0, true));
             startNextAvailable();
         }
         return START_NOT_STICKY;
@@ -120,7 +142,7 @@ public final class DownloadService extends Service {
         }
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
-                "?鞊???鞊??",
+                getString(R.string.notification_channel_downloads),
                 NotificationManager.IMPORTANCE_LOW);
         notificationManager.createNotificationChannel(channel);
     }
@@ -147,11 +169,11 @@ public final class DownloadService extends Service {
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
         builder.setSmallIcon(android.R.drawable.stat_sys_download)
-                .setContentTitle("Downloader")
+                .setContentTitle(getString(R.string.notification_title_downloader))
                 .setContentText(text)
                 .setContentIntent(contentIntent)
                 .setOngoing(ongoing)
-                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelIntent);
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.notification_action_cancel), cancelIntent);
 
         if (total > 0L) {
             int progress = (int) Math.max(0L, Math.min(100L, downloaded * 100L / total));
@@ -184,17 +206,20 @@ public final class DownloadService extends Service {
             String taskId = task.optString("id");
             String url = task.optString("url");
             String fileName = task.optString("fileName");
+            String referer = task.optString("referer", "");
+            String cookieHeader = task.optString("cookieHeader", "");
+            String headersJson = task.optString("headersJson", "{}");
             DownloadEngine engine = new DownloadEngine(this);
             activeEngines.put(taskId, engine);
             taskStore.markRunning(taskId);
             eventLog.write("started", taskId, url);
             eventLog.write("concurrency", taskId, "active=" + activeEngines.size() + "/" + MAX_CONCURRENT_DOWNLOADS);
-            updateNotification("Downloading " + activeEngines.size() + "/" + MAX_CONCURRENT_DOWNLOADS, 0L, 0L, true);
-            engine.start(url, fileName, new ServiceCallback(taskId));
+            updateNotification(getString(R.string.notification_downloading_slots, activeEngines.size(), MAX_CONCURRENT_DOWNLOADS), 0L, 0L, true);
+            engine.start(url, fileName, referer, cookieHeader, headersJson, new ServiceCallback(taskId));
         }
 
         if (activeEngines.isEmpty() && taskStore.nextRunnable() == null) {
-            updateNotification("Queue finished", 100L, 100L, false);
+            updateNotification(getString(R.string.notification_queue_finished), 100L, 100L, false);
             stopForeground(false);
             stopSelf();
         }
@@ -230,7 +255,7 @@ public final class DownloadService extends Service {
         @Override
         public void onProgress(long downloaded, long total) {
             taskStore.progress(taskId, downloaded, total);
-            updateNotification("Downloading " + formatProgress(downloaded, total), downloaded, total, true);
+            updateNotification(getString(R.string.notification_downloading_progress, formatProgress(downloaded, total)), downloaded, total, true);
         }
 
         @Override
@@ -244,7 +269,7 @@ public final class DownloadService extends Service {
             }
             taskStore.done(taskId, exportedLocation);
             eventLog.write("done", taskId, exportedLocation);
-            updateNotification("Download complete", 100L, 100L, false);
+            updateNotification(getString(R.string.notification_download_complete), 100L, 100L, false);
             finishTask(taskId);
         }
 
@@ -253,7 +278,7 @@ public final class DownloadService extends Service {
             String message = error.getMessage() == null ? error.toString() : error.getMessage();
             taskStore.failed(taskId, message);
             eventLog.write("error", taskId, message);
-            updateNotification("Download failed", 0L, 0L, false);
+            updateNotification(getString(R.string.notification_download_failed), 0L, 0L, false);
             finishTask(taskId);
         }
 

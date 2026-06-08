@@ -138,9 +138,9 @@ if (!(Test-Path -LiteralPath $ApkPath)) {
 }
 
 if ($DryRun) {
-    Write-Host "[DryRun] git -c safe.directory=$repoRoot add -u"
+    Write-Host "[DryRun] git -c safe.directory=$repoRoot add -A"
 } else {
-    git -c safe.directory=$repoRoot add -u
+    git -c safe.directory=$repoRoot add -A
 }
 $hasTrackedChanges = $false
 if ($DryRun) {

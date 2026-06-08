@@ -16,6 +16,13 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Finished, failed, and cancelled task history can be cleared from the Android UI.
 - Structured runtime activity log at the app-specific Documents `logs/activity.jsonl`.
 - Android UI can export the structured runtime activity log to public Downloads for device-side diagnostics.
+- Android UI strings now use resource dictionaries with English, Traditional Chinese, Simplified Chinese, and Japanese translations.
+- Android UI includes an in-app language selector for system default, English, Traditional Chinese, Simplified Chinese, and Japanese; the saved choice also applies to service notifications.
+- Resolved page URLs propagate Referer and Origin headers into HTTP, HLS, and DASH manifest/key/init/segment requests.
+- HTTP requests share an app-wide persistent cookie jar so cookies captured during page resolution can be reused by later manifest and media requests after service or app restarts.
+- Android input accepts pasted browser request context: `Cookie:` and `Referer:` headers are parsed, persisted, and applied to queued downloads.
+- Android input accepts additional safe pasted request headers such as `User-Agent`, `Accept`, `Accept-Language`, `Authorization`, and fetch metadata headers.
+- Android input supports browser `Copy as cURL` text and avoids queuing URLs found only inside pasted header values such as Referer.
 - Parser registry foundation through `MediaResolver`.
 - First site-aware candidate extraction and ordering for MovieFFM, Gimy, and XiaoyaKankan style pages.
 - Recursive player/iframe/API page resolution up to four levels deep.
@@ -45,6 +52,8 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Generic player-script extraction for `hlsUrl`, `hls`, `m3u8`, `playlist`, `source`, `video_url`, and protocol-relative media URLs.
 - MacCMS-like site detection and play/detail traversal for NNYY, 3KOR, DramaSQ, Olevod/OleHDTV, Thanju, 99iTV, and 777TV.
 - Large platform/site detection for Dailymotion, YouTube, Bilibili, iQIYI, Ikanbot, and YFSP so resolver logs and task history no longer fall back to generic for those URLs.
+- Social platform detection and embedded media extraction for Instagram, Facebook, and X/Twitter metadata, JSON payloads, and Twitter media variants.
+- First JAV/adult site cluster detection and play-page candidate traversal for MissAV, Jable, NJAV/NJAVTV, SupJAV, Hanime1, 18JAV/18AV, 85xVideo, AVBebe, AVJoy, BestJavPorn, JavDock, JavFilms, TinyAVideo, GoodAV17, HohoJ, GGJAV, and TKTube.
 - Wider player JSON extraction for common manifest and stream keys such as `manifestUrl`, `streamUrl`, `videoUrl`, `mediaUrl`, `dashUrl`, `qualities`, and `streams`.
 - HLS `.m3u8` segment download and merge into a `.ts` output.
 - HLS master playlist variant selection by bandwidth.
@@ -58,10 +67,10 @@ This Android app is a native port track for the desktop downloader in `downloade
 
 ## Not Yet Ported From Desktop
 
-- Full deep per-site parsers for MovieFFM, Gimy, XiaoyaKankan, YFSP, iQIYI, YouTube, Dailymotion, Bilibili, Ikanbot, and the adult/JAV sites listed in the desktop README; NNYY, 3KOR, DramaSQ, Olevod/OleHDTV, Thanju, 99iTV, and 777TV currently have MacCMS-like generic traversal, while Dailymotion/YouTube/Bilibili/iQIYI/Ikanbot/YFSP currently have site detection and generic stream extraction only.
+- Full deep per-site parsers for MovieFFM, Gimy, XiaoyaKankan, YFSP, iQIYI, YouTube, Dailymotion, Bilibili, Ikanbot, social platforms, and adult/JAV sites; NNYY, 3KOR, DramaSQ, Olevod/OleHDTV, Thanju, 99iTV, and 777TV currently have MacCMS-like generic traversal, while Dailymotion/YouTube/Bilibili/iQIYI/Ikanbot/YFSP/social platforms and the first adult/JAV cluster currently have site detection and generic stream/play-page extraction only.
 - yt-dlp integration and plugin support.
 - ffmpeg/ffprobe based remux, transcode, duration validation, multi-track DASH audio/video muxing, and fallback routing.
-- Browser/cookie/impersonation behavior equivalent to `curl_cffi` and desktop browser workflows.
+- Full browser session reuse and impersonation behavior equivalent to `curl_cffi` and desktop browser workflows; pasted Cookie/Referer plus selected request headers, basic Referer/Origin propagation, and persistent app cookie storage are already ported.
 - Search workflows and alternate-site fallback prompts.
 - Pre-Android 10 public Downloads export; current fallback output is app-specific external Downloads on older devices.
 

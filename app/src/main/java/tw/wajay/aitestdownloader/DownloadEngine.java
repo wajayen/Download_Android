@@ -1,6 +1,7 @@
 package tw.wajay.aitestdownloader;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Environment;
 
@@ -13,8 +14,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.StringReader;
+import java.net.CookieHandler;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
+import java.net.CookieStore;
+import java.net.HttpCookie;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.net.URL;
 import java.security.GeneralSecurityException;
@@ -22,8 +29,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -62,11 +71,13 @@ final class DownloadEngine {
         final String primaryUrl;
         final String sourceSite;
         final List<String> fallbackUrls;
+        final String refererUrl;
 
-        ResolvedTarget(String primaryUrl, String sourceSite, List<String> fallbackUrls) {
+        ResolvedTarget(String primaryUrl, String sourceSite, List<String> fallbackUrls, String refererUrl) {
             this.primaryUrl = primaryUrl;
             this.sourceSite = sourceSite;
             this.fallbackUrls = fallbackUrls;
+            this.refererUrl = refererUrl;
         }
     }
 
@@ -132,36 +143,374 @@ final class DownloadEngine {
     }
 
     private final Context context;
+    private final CookieManager cookieManager;
+    private final Map<String, String> requestHeaders = new LinkedHashMap<>();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
 
     DownloadEngine(Context context) {
         this.context = context.getApplicationContext();
+        cookieManager = new CookieManager(new PersistentCookieStore(this.context), CookiePolicy.ACCEPT_ALL);
+        CookieHandler.setDefault(cookieManager);
+    }
+
+    private static final class PersistentCookieStore implements CookieStore {
+        private static final String PREFS_NAME = "download_http_cookies";
+        private static final String KEY_COOKIES = "cookies";
+
+        private final SharedPreferences prefs;
+        private final List<StoredCookie> cookies = new ArrayList<>();
+
+        PersistentCookieStore(Context context) {
+            prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            load();
+        }
+
+        @Override
+        public synchronized void add(URI uri, HttpCookie cookie) {
+            if (uri == null || cookie == null || cookie.getName() == null || cookie.getName().isEmpty()) {
+                return;
+            }
+            StoredCookie stored = StoredCookie.from(uri, cookie);
+            remove(stored.uri, stored.cookie);
+            if (stored.isExpired()) {
+                save();
+                return;
+            }
+            cookies.add(stored);
+            save();
+        }
+
+        @Override
+        public synchronized List<HttpCookie> get(URI uri) {
+            boolean changed = removeExpiredLocked();
+            List<HttpCookie> matches = new ArrayList<>();
+            for (StoredCookie stored : cookies) {
+                if (stored.matches(uri)) {
+                    matches.add(stored.cookie);
+                }
+            }
+            if (changed) {
+                save();
+            }
+            return matches;
+        }
+
+        @Override
+        public synchronized List<HttpCookie> getCookies() {
+            boolean changed = removeExpiredLocked();
+            if (changed) {
+                save();
+            }
+            List<HttpCookie> result = new ArrayList<>();
+            for (StoredCookie stored : cookies) {
+                result.add(stored.cookie);
+            }
+            return result;
+        }
+
+        @Override
+        public synchronized List<URI> getURIs() {
+            boolean changed = removeExpiredLocked();
+            if (changed) {
+                save();
+            }
+            List<URI> uris = new ArrayList<>();
+            for (StoredCookie stored : cookies) {
+                if (!uris.contains(stored.uri)) {
+                    uris.add(stored.uri);
+                }
+            }
+            return uris;
+        }
+
+        @Override
+        public synchronized boolean remove(URI uri, HttpCookie cookie) {
+            boolean removed = false;
+            for (int i = cookies.size() - 1; i >= 0; i--) {
+                if (cookies.get(i).sameCookie(cookie)) {
+                    cookies.remove(i);
+                    removed = true;
+                }
+            }
+            if (removed) {
+                save();
+            }
+            return removed;
+        }
+
+        @Override
+        public synchronized boolean removeAll() {
+            boolean hadCookies = !cookies.isEmpty();
+            cookies.clear();
+            save();
+            return hadCookies;
+        }
+
+        private void load() {
+            cookies.clear();
+            String raw = prefs.getString(KEY_COOKIES, "[]");
+            long now = System.currentTimeMillis();
+            try {
+                JSONArray array = new JSONArray(raw);
+                for (int i = 0; i < array.length(); i++) {
+                    JSONObject item = array.optJSONObject(i);
+                    if (item == null) {
+                        continue;
+                    }
+                    StoredCookie stored = StoredCookie.fromJson(item, now);
+                    if (stored != null && !stored.isExpired()) {
+                        cookies.add(stored);
+                    }
+                }
+            } catch (Exception ignored) {
+                cookies.clear();
+            }
+        }
+
+        private void save() {
+            JSONArray array = new JSONArray();
+            for (StoredCookie stored : cookies) {
+                if (!stored.isExpired()) {
+                    array.put(stored.toJson());
+                }
+            }
+            prefs.edit().putString(KEY_COOKIES, array.toString()).apply();
+        }
+
+        private boolean removeExpiredLocked() {
+            boolean changed = false;
+            for (int i = cookies.size() - 1; i >= 0; i--) {
+                if (cookies.get(i).isExpired()) {
+                    cookies.remove(i);
+                    changed = true;
+                }
+            }
+            return changed;
+        }
+    }
+
+    private static final class StoredCookie {
+        final URI uri;
+        final HttpCookie cookie;
+        final long expiresAtMillis;
+
+        StoredCookie(URI uri, HttpCookie cookie, long expiresAtMillis) {
+            this.uri = uri;
+            this.cookie = cookie;
+            this.expiresAtMillis = expiresAtMillis;
+        }
+
+        static StoredCookie from(URI uri, HttpCookie original) {
+            HttpCookie cookie = new HttpCookie(original.getName(), original.getValue());
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.US);
+            String domain = firstNonEmptyCookieValue(original.getDomain(), host).toLowerCase(Locale.US);
+            String path = firstNonEmptyCookieValue(original.getPath(), defaultCookiePath(uri));
+            cookie.setDomain(domain);
+            cookie.setPath(path);
+            cookie.setMaxAge(original.getMaxAge());
+            cookie.setSecure(original.getSecure());
+            cookie.setHttpOnly(original.isHttpOnly());
+            cookie.setVersion(original.getVersion());
+            long expiresAt = original.getMaxAge() > 0L ? System.currentTimeMillis() + original.getMaxAge() * 1000L : original.getMaxAge();
+            return new StoredCookie(cookieUri(uri, domain), cookie, expiresAt);
+        }
+
+        static StoredCookie fromJson(JSONObject item, long now) {
+            String name = item.optString("name", "");
+            String value = item.optString("value", "");
+            String domain = item.optString("domain", "");
+            if (name.isEmpty() || domain.isEmpty()) {
+                return null;
+            }
+            long expiresAt = item.optLong("expiresAt", -1L);
+            if (expiresAt == 0L || (expiresAt > 0L && expiresAt <= now)) {
+                return null;
+            }
+            HttpCookie cookie = new HttpCookie(name, value);
+            cookie.setDomain(domain);
+            cookie.setPath(item.optString("path", "/"));
+            cookie.setSecure(item.optBoolean("secure", false));
+            cookie.setHttpOnly(item.optBoolean("httpOnly", false));
+            cookie.setVersion(item.optInt("version", 0));
+            if (expiresAt > 0L) {
+                cookie.setMaxAge(Math.max(1L, (expiresAt - now) / 1000L));
+            } else {
+                cookie.setMaxAge(-1L);
+            }
+            try {
+                URI uri = new URI(item.optString("uri", "https://" + stripLeadingDot(domain) + "/"));
+                return new StoredCookie(uri, cookie, expiresAt);
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+
+        JSONObject toJson() {
+            JSONObject item = new JSONObject();
+            try {
+                item.put("uri", uri.toString());
+                item.put("name", cookie.getName());
+                item.put("value", cookie.getValue());
+                item.put("domain", cookie.getDomain());
+                item.put("path", cookie.getPath());
+                item.put("secure", cookie.getSecure());
+                item.put("httpOnly", cookie.isHttpOnly());
+                item.put("version", cookie.getVersion());
+                item.put("expiresAt", expiresAtMillis);
+            } catch (Exception ignored) {
+                // Ignore malformed cookie state and keep saving the remaining cookies.
+            }
+            return item;
+        }
+
+        boolean matches(URI requestUri) {
+            if (requestUri == null || isExpired()) {
+                return false;
+            }
+            String host = requestUri.getHost() == null ? "" : requestUri.getHost().toLowerCase(Locale.US);
+            String domain = cookie.getDomain() == null ? "" : cookie.getDomain().toLowerCase(Locale.US);
+            String path = cookie.getPath() == null ? "/" : cookie.getPath();
+            String requestPath = requestUri.getPath() == null || requestUri.getPath().isEmpty() ? "/" : requestUri.getPath();
+            boolean domainMatch = host.equals(stripLeadingDot(domain)) || HttpCookie.domainMatches(domain, host);
+            boolean pathMatch = requestPath.startsWith(path);
+            boolean secureMatch = !cookie.getSecure() || "https".equalsIgnoreCase(requestUri.getScheme());
+            return domainMatch && pathMatch && secureMatch;
+        }
+
+        boolean sameCookie(HttpCookie other) {
+            if (other == null) {
+                return false;
+            }
+            String domain = cookie.getDomain() == null ? "" : cookie.getDomain();
+            String otherDomain = other.getDomain() == null ? "" : other.getDomain();
+            String path = cookie.getPath() == null ? "" : cookie.getPath();
+            String otherPath = other.getPath() == null ? "" : other.getPath();
+            return cookie.getName().equalsIgnoreCase(other.getName())
+                    && domain.equalsIgnoreCase(otherDomain)
+                    && path.equals(otherPath);
+        }
+
+        boolean isExpired() {
+            return expiresAtMillis == 0L || (expiresAtMillis > 0L && expiresAtMillis <= System.currentTimeMillis());
+        }
+
+        private static URI cookieUri(URI sourceUri, String domain) {
+            try {
+                String scheme = sourceUri.getScheme() == null ? "https" : sourceUri.getScheme();
+                return new URI(scheme + "://" + stripLeadingDot(domain) + "/");
+            } catch (Exception ignored) {
+                return sourceUri;
+            }
+        }
+
+        private static String defaultCookiePath(URI uri) {
+            String path = uri.getPath();
+            if (path == null || path.isEmpty() || !path.contains("/")) {
+                return "/";
+            }
+            int lastSlash = path.lastIndexOf('/');
+            return lastSlash <= 0 ? "/" : path.substring(0, lastSlash + 1);
+        }
+
+        private static String firstNonEmptyCookieValue(String first, String second) {
+            return first == null || first.trim().isEmpty() ? second : first.trim();
+        }
+
+        private static String stripLeadingDot(String value) {
+            return value == null || value.isEmpty() ? "" : value.replaceFirst("^\\.", "");
+        }
     }
 
     void start(String rawUrl, String requestedName, Callback callback) {
+        start(rawUrl, requestedName, "", "", callback);
+    }
+
+    void start(String rawUrl, String requestedName, String providedReferer, String cookieHeader, Callback callback) {
+        start(rawUrl, requestedName, providedReferer, cookieHeader, "{}", callback);
+    }
+
+    void start(String rawUrl, String requestedName, String providedReferer, String cookieHeader, String headersJson, Callback callback) {
         cancelled.set(false);
         executor.execute(() -> {
             try {
+                importCookieHeader(rawUrl, cookieHeader);
+                importRequestHeaders(headersJson);
                 Uri uri = Uri.parse(rawUrl);
                 String fileName = FileNames.choose(uri, requestedName);
                 String targetUrl = rawUrl;
                 String sourceSite = MediaResolver.sourceSite(rawUrl);
                 List<String> fallbackUrls = new ArrayList<>();
+                String refererUrl = firstNonEmpty(providedReferer, "");
                 if (!isMediaUrl(rawUrl)) {
                     ResolvedTarget resolvedTarget = resolvePageToMedia(rawUrl, callback);
                     targetUrl = resolvedTarget.primaryUrl;
                     sourceSite = resolvedTarget.sourceSite;
                     fallbackUrls = resolvedTarget.fallbackUrls;
+                    refererUrl = firstNonEmpty(refererUrl, resolvedTarget.refererUrl);
                     if (requestedName == null || requestedName.trim().isEmpty()) {
                         fileName = FileNames.choose(Uri.parse(targetUrl), "");
                     }
                 }
-                downloadWithFallbacks(targetUrl, fallbackUrls, sourceSite, fileName, callback);
+                downloadWithFallbacks(targetUrl, fallbackUrls, sourceSite, fileName, refererUrl, callback);
             } catch (Exception error) {
                 callback.onError(error);
             }
         });
+    }
+
+    private void importCookieHeader(String rawUrl, String cookieHeader) {
+        String header = cookieHeader == null ? "" : cookieHeader.trim();
+        if (header.isEmpty()) {
+            return;
+        }
+        try {
+            URI uri = new URI(rawUrl);
+            String[] parts = header.split(";");
+            for (String part : parts) {
+                String value = part.trim();
+                int equals = value.indexOf('=');
+                if (equals <= 0) {
+                    continue;
+                }
+                HttpCookie cookie = new HttpCookie(value.substring(0, equals).trim(), value.substring(equals + 1).trim());
+                cookie.setPath("/");
+                cookieManager.getCookieStore().add(uri, cookie);
+            }
+        } catch (Exception ignored) {
+            // Invalid pasted cookie text should not block normal URL downloads.
+        }
+    }
+
+    private void importRequestHeaders(String headersJson) {
+        synchronized (requestHeaders) {
+            requestHeaders.clear();
+            String raw = headersJson == null || headersJson.trim().isEmpty() ? "{}" : headersJson.trim();
+            try {
+                JSONObject object = new JSONObject(raw);
+                java.util.Iterator<String> keys = object.keys();
+                while (keys.hasNext()) {
+                    String name = keys.next();
+                    String value = object.optString(name, "").trim();
+                    if (isAllowedRequestHeader(name) && !value.isEmpty()) {
+                        requestHeaders.put(name, value);
+                    }
+                }
+            } catch (Exception ignored) {
+                requestHeaders.clear();
+            }
+        }
+    }
+
+    private boolean isAllowedRequestHeader(String name) {
+        return "User-Agent".equals(name)
+                || "Accept".equals(name)
+                || "Accept-Language".equals(name)
+                || "Authorization".equals(name)
+                || "X-Requested-With".equals(name)
+                || "Sec-Fetch-Site".equals(name)
+                || "Sec-Fetch-Mode".equals(name)
+                || "Sec-Fetch-Dest".equals(name);
     }
     void cancel() {
         cancelled.set(true);
@@ -172,32 +521,32 @@ final class DownloadEngine {
         for (int depth = 0; depth < PAGE_RESOLVE_DEPTH_LIMIT; depth++) {
             String pageText = readText(currentUrl);
             if (looksLikeHlsManifest(pageText)) {
-                callback.onStatus("????HLS manifest");
+                callback.onStatus(context.getString(R.string.engine_hls_manifest_detected));
                 callback.onResolved(MediaResolver.sourceSite(currentUrl), currentUrl, Collections.singletonList(currentUrl), Collections.singletonList("HLS manifest"));
-                return new ResolvedTarget(currentUrl, MediaResolver.sourceSite(currentUrl), new ArrayList<>());
+                return new ResolvedTarget(currentUrl, MediaResolver.sourceSite(currentUrl), new ArrayList<>(), "");
             }
 
             String anime1Url = resolveAnime1ApiMedia(currentUrl, pageText);
             if (anime1Url != null) {
-                callback.onStatus("Resolved Anime1 API media");
+                callback.onStatus(context.getString(R.string.engine_resolved_anime1));
                 callback.onResolved("anime1", anime1Url, Collections.singletonList(anime1Url), Collections.singletonList("Anime1 API"));
-                return new ResolvedTarget(anime1Url, "anime1", new ArrayList<>());
+                return new ResolvedTarget(anime1Url, "anime1", new ArrayList<>(), currentUrl);
             }
             MediaResolver.Result resolved = MediaResolver.resolve(pageText, currentUrl);
-            callback.onStatus("Resolving page candidate: " + resolved.sourceSite + " depth=" + depth);
+            callback.onStatus(context.getString(R.string.engine_resolving_page_candidate, resolved.sourceSite, depth));
             if (resolved.primaryUrl == null) {
-                throw new IOException("?蹓遴????潮???????? mp4/m3u8 ?謕?");
+                throw new IOException(context.getString(R.string.error_no_media_candidate));
             }
             callback.onResolved(resolved.sourceSite, resolved.primaryUrl, resolved.candidates, resolved.candidateLabels);
             if (resolved.primaryIsMedia) {
-                return new ResolvedTarget(resolved.primaryUrl, resolved.sourceSite, mediaFallbacks(resolved.candidates, resolved.primaryUrl));
+                return new ResolvedTarget(resolved.primaryUrl, resolved.sourceSite, mediaFallbacks(resolved.candidates, resolved.primaryUrl), currentUrl);
             }
             currentUrl = resolved.primaryUrl;
         }
-        throw new IOException("?蹓遴????????瞍?????????????URL");
+        throw new IOException(context.getString(R.string.error_resolve_depth_exceeded));
     }
 
-    private void downloadWithFallbacks(String primaryUrl, List<String> fallbackUrls, String sourceSite, String fileName, Callback callback) throws IOException {
+    private void downloadWithFallbacks(String primaryUrl, List<String> fallbackUrls, String sourceSite, String fileName, String refererUrl, Callback callback) throws IOException {
         List<String> targets = new ArrayList<>();
         targets.add(primaryUrl);
         for (String fallbackUrl : fallbackUrls) {
@@ -211,18 +560,18 @@ final class DownloadEngine {
             String targetUrl = targets.get(i);
             try {
                 if (i > 0) {
-                    callback.onStatus("Retrying alternate source " + (i + 1) + "/" + targets.size());
+                    callback.onStatus(context.getString(R.string.engine_retrying_alternate_source, i + 1, targets.size()));
                     callback.onResolved(sourceSite, targetUrl, targets.subList(i, targets.size()), Collections.emptyList());
                 }
                 if (isDashUrl(targetUrl)) {
-                    callback.onStatus("Resolving DASH manifest");
-                    downloadDash(targetUrl, FileNames.replaceExtension(fileName, ".mp4"), callback);
+                    callback.onStatus(context.getString(R.string.engine_resolving_dash));
+                    downloadDash(targetUrl, FileNames.replaceExtension(fileName, ".mp4"), refererUrl, callback);
                 } else if (isHlsUrl(targetUrl) || (targetUrl.equals(primaryUrl) && !isMediaUrl(targetUrl))) {
-                    callback.onStatus("Resolving HLS manifest");
-                    downloadHls(targetUrl, FileNames.replaceExtension(fileName, ".ts"), callback);
+                    callback.onStatus(context.getString(R.string.engine_resolving_hls));
+                    downloadHls(targetUrl, FileNames.replaceExtension(fileName, ".ts"), refererUrl, callback);
                 } else {
-                    callback.onStatus("Starting HTTP download");
-                    downloadHttp(targetUrl, fileName, callback);
+                    callback.onStatus(context.getString(R.string.engine_starting_http));
+                    downloadHttp(targetUrl, fileName, refererUrl, callback);
                 }
                 return;
             } catch (IOException error) {
@@ -230,7 +579,7 @@ final class DownloadEngine {
                 if (cancelled.get() || i == targets.size() - 1) {
                     throw error;
                 }
-                callback.onStatus("Source failed, switching: " + shortMessage(error));
+                callback.onStatus(context.getString(R.string.engine_source_failed_switching, shortMessage(error)));
             }
         }
         if (lastError != null) {
@@ -256,7 +605,7 @@ final class DownloadEngine {
         return message.length() > 96 ? message.substring(0, 96) : message;
     }
 
-    private void downloadHttp(String rawUrl, String fileName, Callback callback) throws IOException {
+    private void downloadHttp(String rawUrl, String fileName, String refererUrl, Callback callback) throws IOException {
         File output = outputFile(fileName);
         File part = new File(output.getParentFile(), output.getName() + ".part");
         File state = new File(output.getParentFile(), output.getName() + ".httpstate");
@@ -264,7 +613,7 @@ final class DownloadEngine {
         saveHttpState(state, rawUrl);
         long existing = part.exists() ? part.length() : 0L;
 
-        HttpURLConnection connection = open(rawUrl);
+        HttpURLConnection connection = open(rawUrl, refererUrl);
         if (existing > 0L) {
             connection.setRequestProperty("Range", "bytes=" + existing + "-");
         }
@@ -285,7 +634,7 @@ final class DownloadEngine {
         }
 
         if (cancelled.get()) {
-            callback.onStatus("Cancelled; keeping partial file");
+            callback.onStatus(context.getString(R.string.engine_cancelled_keep_partial));
             return;
         }
         replace(part, output);
@@ -295,8 +644,8 @@ final class DownloadEngine {
         callback.onDone(output);
     }
 
-    private void downloadHls(String rawUrl, String fileName, Callback callback) throws IOException {
-        HlsPlaylist playlist = resolveHlsPlaylist(rawUrl, callback);
+    private void downloadHls(String rawUrl, String fileName, String refererUrl, Callback callback) throws IOException {
+        HlsPlaylist playlist = resolveHlsPlaylist(rawUrl, refererUrl, callback);
         List<HlsSegment> segments = playlist.segments;
         if (segments.isEmpty()) {
             throw new IOException("HLS manifest did not contain downloadable segments");
@@ -314,18 +663,18 @@ final class DownloadEngine {
              BufferedOutputStream outputStream = new BufferedOutputStream(fos)) {
             for (int index = startIndex; index < segments.size(); index++) {
                 if (cancelled.get()) {
-                    callback.onStatus("Cancelled; keeping HLS partial file");
+                    callback.onStatus(context.getString(R.string.engine_cancelled_keep_hls_partial));
                     return;
                 }
-                callback.onStatus("??? HLS ??芣 " + (index + 1) + " / " + segments.size());
+                callback.onStatus(context.getString(R.string.engine_downloading_hls_segment, index + 1, segments.size()));
                 HlsSegment segment = segments.get(index);
                 if (segment.discontinuity) {
                     outputStream.flush();
                 }
                 if (allowMapWrite) {
-                    writeMapIfNeeded(outputStream, segment, writtenMaps);
+                    writeMapIfNeeded(outputStream, segment, writtenMaps, effectiveReferer(refererUrl, playlist.manifestUrl));
                 }
-                byte[] data = downloadSegmentWithRetry(segment);
+                byte[] data = downloadSegmentWithRetry(segment, effectiveReferer(refererUrl, playlist.manifestUrl));
                 outputStream.write(data);
                 outputStream.flush();
                 saveHlsCheckpoint(checkpoint, playlist, index + 1);
@@ -340,8 +689,8 @@ final class DownloadEngine {
         callback.onDone(output);
     }
 
-    private void downloadDash(String rawUrl, String fileName, Callback callback) throws IOException {
-        DashPlan plan = resolveDashPlan(rawUrl);
+    private void downloadDash(String rawUrl, String fileName, String refererUrl, Callback callback) throws IOException {
+        DashPlan plan = resolveDashPlan(rawUrl, refererUrl);
         if (plan.initUrl == null || plan.initUrl.isEmpty() || plan.segments.isEmpty()) {
             throw new IOException("DASH manifest did not contain a supported SegmentTemplate or SegmentList");
         }
@@ -352,11 +701,11 @@ final class DownloadEngine {
         int startIndex = loadDashCheckpoint(checkpoint, plan, part);
         boolean append = startIndex > 0 && part.exists();
 
-        callback.onStatus("DASH representation " + plan.representationId + " bandwidth=" + plan.bandwidth);
+        callback.onStatus(context.getString(R.string.engine_dash_representation, plan.representationId, plan.bandwidth));
         try (FileOutputStream fos = new FileOutputStream(part, append);
              BufferedOutputStream outputStream = new BufferedOutputStream(fos)) {
             if (startIndex == 0) {
-                byte[] init = readBytes(plan.initUrl, plan.initRange);
+                byte[] init = readBytes(plan.initUrl, plan.initRange, effectiveReferer(refererUrl, plan.manifestUrl));
                 if (init.length == 0) {
                     throw new IOException("empty DASH init segment");
                 }
@@ -365,12 +714,12 @@ final class DownloadEngine {
             }
             for (int index = startIndex; index < plan.segments.size(); index++) {
                 if (cancelled.get()) {
-                    callback.onStatus("Cancelled; keeping DASH partial file");
+                    callback.onStatus(context.getString(R.string.engine_cancelled_keep_dash_partial));
                     return;
                 }
-                callback.onStatus("Downloading DASH segment " + (index + 1) + " / " + plan.segments.size());
+                callback.onStatus(context.getString(R.string.engine_downloading_dash_segment, index + 1, plan.segments.size()));
                 DashSegment segment = plan.segments.get(index);
-                byte[] data = readBytes(segment.url, segment.byteRange);
+                byte[] data = readBytes(segment.url, segment.byteRange, effectiveReferer(refererUrl, plan.manifestUrl));
                 if (data.length == 0) {
                     throw new IOException("empty DASH segment");
                 }
@@ -408,16 +757,38 @@ final class DownloadEngine {
     }
 
     private HttpURLConnection open(String rawUrl) throws IOException {
+        return open(rawUrl, "");
+    }
+
+    private HttpURLConnection open(String rawUrl, String refererUrl) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) new URL(rawUrl).openConnection();
         connection.setConnectTimeout(20000);
         connection.setReadTimeout(30000);
-        connection.setRequestProperty("User-Agent", "Mozilla/5.0 Android Downloader/0.3");
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36 AI-Test-Downloader/0.31");
         connection.setRequestProperty("Accept", "*/*");
+        connection.setRequestProperty("Accept-Language", "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7");
+        synchronized (requestHeaders) {
+            for (Map.Entry<String, String> header : requestHeaders.entrySet()) {
+                connection.setRequestProperty(header.getKey(), header.getValue());
+            }
+        }
+        String referer = cleanReferer(rawUrl, refererUrl);
+        if (!referer.isEmpty()) {
+            connection.setRequestProperty("Referer", referer);
+            String origin = originFromUrl(referer);
+            if (!origin.isEmpty()) {
+                connection.setRequestProperty("Origin", origin);
+            }
+        }
         return connection;
     }
 
     private String readText(String rawUrl) throws IOException {
-        HttpURLConnection connection = open(rawUrl);
+        return readText(rawUrl, "");
+    }
+
+    private String readText(String rawUrl, String refererUrl) throws IOException {
+        HttpURLConnection connection = open(rawUrl, refererUrl);
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
             StringBuilder builder = new StringBuilder();
             String line;
@@ -427,6 +798,37 @@ final class DownloadEngine {
             return builder.toString();
         } finally {
             connection.disconnect();
+        }
+    }
+
+    private String effectiveReferer(String preferred, String fallback) {
+        String value = preferred == null ? "" : preferred.trim();
+        if (!value.isEmpty()) {
+            return value;
+        }
+        return fallback == null ? "" : fallback.trim();
+    }
+
+    private String cleanReferer(String rawUrl, String refererUrl) {
+        String referer = refererUrl == null ? "" : refererUrl.trim();
+        if (referer.isEmpty() || referer.equals(rawUrl)) {
+            return "";
+        }
+        return referer;
+    }
+
+    private String originFromUrl(String rawUrl) {
+        try {
+            URL url = new URL(rawUrl);
+            StringBuilder origin = new StringBuilder();
+            origin.append(url.getProtocol()).append("://").append(url.getHost());
+            int port = url.getPort();
+            if (port > 0 && port != url.getDefaultPort()) {
+                origin.append(':').append(port);
+            }
+            return origin.toString();
+        } catch (MalformedURLException ignored) {
+            return "";
         }
     }
 
@@ -468,16 +870,11 @@ final class DownloadEngine {
         }
         String dataReq = java.net.URLDecoder.decode(matcher.group(1), "UTF-8");
         String body = "d=" + URLEncoder.encode(dataReq, "UTF-8");
-        HttpURLConnection connection = (HttpURLConnection) new URL("https://v.anime1.me/api").openConnection();
-        connection.setConnectTimeout(20000);
-        connection.setReadTimeout(30000);
+        HttpURLConnection connection = open("https://v.anime1.me/api", pageUrl);
         connection.setRequestMethod("POST");
         connection.setDoOutput(true);
-        connection.setRequestProperty("User-Agent", "Mozilla/5.0 Android Downloader/0.16");
         connection.setRequestProperty("Accept", "application/json, text/plain, */*");
         connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
-        connection.setRequestProperty("Referer", pageUrl);
-        connection.setRequestProperty("Origin", "https://anime1.me");
         try (java.io.OutputStream output = connection.getOutputStream()) {
             output.write(body.getBytes("UTF-8"));
         }
@@ -537,8 +934,8 @@ final class DownloadEngine {
         return value;
     }
 
-    private DashPlan resolveDashPlan(String rawUrl) throws IOException {
-        String manifest = readText(rawUrl);
+    private DashPlan resolveDashPlan(String rawUrl, String refererUrl) throws IOException {
+        String manifest = readText(rawUrl, refererUrl);
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setNamespaceAware(false);
@@ -698,9 +1095,9 @@ final class DownloadEngine {
         return buffer.toString();
     }
 
-    private HlsPlaylist resolveHlsPlaylist(String rawUrl, Callback callback) throws IOException {
+    private HlsPlaylist resolveHlsPlaylist(String rawUrl, String refererUrl, Callback callback) throws IOException {
         String manifestUrl = rawUrl;
-        String manifest = readText(manifestUrl);
+        String manifest = readText(manifestUrl, refererUrl);
         List<Variant> variants = parseVariants(manifest, manifestUrl);
         if (!variants.isEmpty()) {
             Variant selected = variants.get(0);
@@ -709,9 +1106,9 @@ final class DownloadEngine {
                     selected = variant;
                 }
             }
-            callback.onStatus("?鞊? HLS variant bandwidth=" + selected.bandwidth);
+            callback.onStatus(context.getString(R.string.engine_hls_variant, selected.bandwidth));
             manifestUrl = selected.url;
-            manifest = readText(manifestUrl);
+            manifest = readText(manifestUrl, effectiveReferer(refererUrl, rawUrl));
         }
         return parseMediaPlaylist(manifest, manifestUrl);
     }
@@ -776,7 +1173,7 @@ final class DownloadEngine {
         return new HlsPlaylist(manifestUrl, segments);
     }
 
-    private void writeMapIfNeeded(BufferedOutputStream outputStream, HlsSegment segment, Set<String> writtenMaps) throws IOException {
+    private void writeMapIfNeeded(BufferedOutputStream outputStream, HlsSegment segment, Set<String> writtenMaps, String refererUrl) throws IOException {
         if (segment.map == null || segment.map.uri == null || segment.map.uri.isEmpty()) {
             return;
         }
@@ -784,7 +1181,7 @@ final class DownloadEngine {
         if (writtenMaps.contains(mapKey)) {
             return;
         }
-        byte[] mapBytes = readBytes(segment.map.uri, segment.map.byteRange);
+        byte[] mapBytes = readBytes(segment.map.uri, segment.map.byteRange, refererUrl);
         if (mapBytes.length == 0) {
             throw new IOException("empty HLS init map");
         }
@@ -792,15 +1189,15 @@ final class DownloadEngine {
         writtenMaps.add(mapKey);
     }
 
-    private byte[] downloadSegmentWithRetry(HlsSegment segment) throws IOException {
+    private byte[] downloadSegmentWithRetry(HlsSegment segment, String refererUrl) throws IOException {
         IOException last = null;
         for (int attempt = 1; attempt <= SEGMENT_RETRY_LIMIT; attempt++) {
             try {
-                byte[] data = readBytes(segment.url);
+                byte[] data = readBytes(segment.url, null, refererUrl);
                 if (data.length == 0) {
                     throw new IOException("empty segment");
                 }
-                return decryptIfNeeded(segment, data);
+                return decryptIfNeeded(segment, data, refererUrl);
             } catch (IOException error) {
                 last = error;
                 if (cancelled.get()) {
@@ -811,22 +1208,22 @@ final class DownloadEngine {
         throw last == null ? new IOException("segment failed") : last;
     }
 
-    private byte[] decryptIfNeeded(HlsSegment segment, byte[] data) throws IOException {
+    private byte[] decryptIfNeeded(HlsSegment segment, byte[] data, String refererUrl) throws IOException {
         HlsKey key = segment.key;
         if (key == null || key.method == null || "NONE".equalsIgnoreCase(key.method)) {
             return data;
         }
         if (!"AES-128".equalsIgnoreCase(key.method)) {
-            throw new IOException("????皜? HLS key method: " + key.method);
+            throw new IOException(context.getString(R.string.error_unsupported_hls_key_method, key.method));
         }
         if (key.uri == null || key.uri.isEmpty()) {
-            throw new IOException("HLS AES-128 key ?餌?? URI");
+            throw new IOException(context.getString(R.string.error_missing_hls_key_uri));
         }
         if (key.bytes == null) {
-            key.bytes = readBytes(key.uri);
+            key.bytes = readBytes(key.uri, null, refererUrl);
         }
         if (key.bytes.length != 16) {
-            throw new IOException("HLS AES-128 key ??撞??餈方蝬?" + key.bytes.length);
+            throw new IOException(context.getString(R.string.error_invalid_hls_key_length, key.bytes.length));
         }
         byte[] iv = key.iv == null ? ivFromSequence(segment.sequence) : key.iv;
         try {
@@ -834,7 +1231,7 @@ final class DownloadEngine {
             cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key.bytes, "AES"), new IvParameterSpec(iv));
             return cipher.doFinal(data);
         } catch (GeneralSecurityException error) {
-            throw new IOException("HLS segment ????剜??", error);
+            throw new IOException(context.getString(R.string.error_hls_decrypt_failed), error);
         }
     }
 
@@ -843,7 +1240,11 @@ final class DownloadEngine {
     }
 
     private byte[] readBytes(String rawUrl, String byteRange) throws IOException {
-        HttpURLConnection connection = open(rawUrl);
+        return readBytes(rawUrl, byteRange, "");
+    }
+
+    private byte[] readBytes(String rawUrl, String byteRange, String refererUrl) throws IOException {
+        HttpURLConnection connection = open(rawUrl, refererUrl);
         if (byteRange != null && !byteRange.isEmpty()) {
             String rangeHeader = hlsByteRangeToHttpRange(byteRange);
             if (rangeHeader != null) {

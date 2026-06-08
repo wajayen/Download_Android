@@ -61,13 +61,22 @@ final class MediaResolver {
             "(?:var\\s+)?(player_data|player_aaaa|player)\\s*=\\s*\\{",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern SITE_PLAY_LINK = Pattern.compile(
-            "<a([^>]+)href=[\"']([^\"']*(?:/(?:vod)?play/|/watch/|/video/|/eps/|/episode/|/vod/detail/|/detail/|/index\\.php/vod/(?:play|detail)/|/dianying/|/dianshiju/|/zongyi/|/dongman/)[^\"']+)[\"']([^>]*)>(.*?)</a>",
+            "<a([^>]+)href=[\"']([^\"']*(?:/(?:vod)?play/|/watch/|/video/|/videos/|/embed/|/amateurjav_content/|/eps/|/episode/|/vod/detail/|/detail/|/index\\.php/vod/(?:play|detail)/|/dianying/|/dianshiju/|/zongyi/|/dongman/)[^\"']+)[\"']([^>]*)>(.*?)</a>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern ANI_GAMER_EPISODE_LINK = Pattern.compile(
             "<a[^>]+href=[\"']([^\"']*(?:animeVideo\\.php\\?sn=\\d+|\\?sn=\\d+)[^\"']*)[\"'][^>]*>",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern ANI_GAMER_VIDEO_SN = Pattern.compile(
             "animefun\\.videoSn\\s*=\\s*(\\d+)",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern META_MEDIA_URL = Pattern.compile(
+            "<meta[^>]+(?:property|name)=[\"'](?:og:video(?::url|:secure_url)?|twitter:player:stream|twitter:player)[\"'][^>]+content=[\"']([^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern SOCIAL_JSON_MEDIA_URL = Pattern.compile(
+            "\"(?:video_url|playable_url|playable_url_quality_hd|browser_native_hd_url|browser_native_sd_url|contentUrl|download_url|media_url|source|src|url)\"\\s*:\\s*\"((?:https?:\\\\?/\\\\?/|\\\\?/\\\\?/)[^\"\\\\]*(?:\\\\.[A-Za-z0-9]+|/video/|/ext_tw_video/|/video/t1/|/v/t42\\.|/v/t50\\.|fbcdn|cdninstagram|twimg)[^\"]*)\"",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern TWITTER_VARIANT_URL = Pattern.compile(
+            "\"url\"\\s*:\\s*\"((?:https?:\\\\?/\\\\?/|\\\\?/\\\\?/)[^\"]+(?:video\\.twimg\\.com|\\.m3u8|\\.mp4)[^\"]*)\"",
             Pattern.CASE_INSENSITIVE);
     private static final String[] PLAYER_KEYS = new String[]{
             "url", "src", "play_url", "playUrl", "urls", "backup", "backup_urls",
@@ -89,6 +98,7 @@ final class MediaResolver {
         addIframeCandidates(candidates, labels, pageText, pageUrl);
         addSitePlayLinkCandidates(candidates, labels, pageText, pageUrl, site);
         addAniGamerCandidates(candidates, labels, pageText, pageUrl, site);
+        addSocialCandidates(candidates, labels, pageText, pageUrl, site);
         sortCandidates(site, candidates);
         String primary = candidates.isEmpty() ? null : candidates.get(0);
         return new Result(site, primary, primary != null && isMediaUrl(primary), candidates, labelList(candidates, labels));
@@ -153,6 +163,19 @@ final class MediaResolver {
         }
         if (lowered.contains("yfsp")) {
             return "yfsp";
+        }
+        if (lowered.contains("instagram.com")) {
+            return "instagram";
+        }
+        if (lowered.contains("facebook.com") || lowered.contains("fb.watch")) {
+            return "facebook";
+        }
+        if (lowered.contains("twitter.com") || lowered.contains("x.com")) {
+            return "twitter";
+        }
+        String adultSite = adultSourceSite(lowered);
+        if (!adultSite.isEmpty()) {
+            return adultSite;
         }
         if (lowered.contains("anime1.")) {
             return "anime1";
@@ -224,6 +247,30 @@ final class MediaResolver {
         if ("ani.gamer.com.tw".equals(host) && path.endsWith("/animevideo.php") && query.contains("sn=") && seen.add(resolved)) {
             out.add(resolved);
             putLabel(labels, resolved, label);
+        }
+    }
+
+    private static void addSocialCandidates(List<String> out, Map<String, String> labels, String pageText, String pageUrl, String site) {
+        if (!isSocialSite(site)) {
+            return;
+        }
+        String text = pageText == null ? "" : pageText;
+        Set<String> seen = new LinkedHashSet<>(out);
+        addSocialRegexCandidates(out, labels, seen, META_MEDIA_URL.matcher(text), pageUrl, site, "social metadata");
+        addSocialRegexCandidates(out, labels, seen, SOCIAL_JSON_MEDIA_URL.matcher(text), pageUrl, site, "social json");
+        if ("twitter".equals(site)) {
+            addSocialRegexCandidates(out, labels, seen, TWITTER_VARIANT_URL.matcher(text), pageUrl, site, "twitter variant");
+        }
+    }
+
+    private static void addSocialRegexCandidates(List<String> out, Map<String, String> labels, Set<String> seen, Matcher matcher, String pageUrl, String site, String label) {
+        while (matcher.find()) {
+            String value = decodeJsonUrl(matcher.group(1));
+            String resolved = resolveUrl(pageUrl, value);
+            if (resolved != null && isSocialMediaCandidate(site, resolved) && seen.add(resolved)) {
+                out.add(resolved);
+                putLabel(labels, resolved, label);
+            }
         }
     }
 
@@ -384,6 +431,20 @@ final class MediaResolver {
         return decoded.replace("\\/", "/").replace("&amp;", "&");
     }
 
+    private static String decodeJsonUrl(String rawUrl) {
+        String decoded = rawUrl == null ? "" : rawUrl.trim();
+        if (decoded.isEmpty()) {
+            return decoded;
+        }
+        return decoded
+                .replace("\\/", "/")
+                .replace("\\u0026", "&")
+                .replace("\\u003d", "=")
+                .replace("\\u003F", "?")
+                .replace("\\u0025", "%")
+                .replace("&amp;", "&");
+    }
+
     private static void addRegexCandidates(List<String> out, Map<String, String> labels, Matcher matcher, String pageUrl, boolean firstGroup, String label) {
         Set<String> seen = new LinkedHashSet<>(out);
         while (matcher.find()) {
@@ -495,6 +556,13 @@ final class MediaResolver {
                 || target.contains("qiyi")
                 || target.contains("ikanbot")
                 || target.contains("yfsp")
+                || target.contains("instagram")
+                || target.contains("cdninstagram")
+                || target.contains("facebook")
+                || target.contains("fbcdn")
+                || target.contains("twitter")
+                || target.contains("twimg")
+                || isAdultMediaHost(target)
                 || "ani.gamer.com.tw".equals(target);
     }
 
@@ -532,6 +600,10 @@ final class MediaResolver {
                 || lowered.contains("/vodplay/")
                 || lowered.contains("/watch/")
                 || lowered.contains("/video/")
+                || lowered.contains("/videos/")
+                || lowered.contains("/embed/")
+                || lowered.contains("/amateurjav_content/")
+                || lowered.contains("/get/video/")
                 || lowered.contains("/eps/")
                 || lowered.contains("/episode/")
                 || lowered.contains("/vod/detail/")
@@ -543,6 +615,27 @@ final class MediaResolver {
                 || lowered.contains("/zongyi/")
                 || lowered.contains("/dongman/")
                 || lowered.contains("animevideo.php?sn=");
+    }
+
+    private static boolean isSocialSite(String site) {
+        return "instagram".equals(site) || "facebook".equals(site) || "twitter".equals(site);
+    }
+
+    private static boolean isSocialMediaCandidate(String site, String url) {
+        String lowered = url == null ? "" : url.toLowerCase(Locale.US);
+        if (isMediaUrl(lowered)) {
+            return true;
+        }
+        if ("instagram".equals(site)) {
+            return lowered.contains("cdninstagram") || lowered.contains("fbcdn") || lowered.contains("/video/");
+        }
+        if ("facebook".equals(site)) {
+            return lowered.contains("fbcdn") || lowered.contains("fbsbx") || lowered.contains("/video/");
+        }
+        if ("twitter".equals(site)) {
+            return lowered.contains("video.twimg.com") || lowered.contains("/ext_tw_video/");
+        }
+        return false;
     }
 
     private static void sortCandidates(String sourceSite, List<String> candidates) {
@@ -591,6 +684,29 @@ final class MediaResolver {
             if (lowered.contains("googlevideo")) {
                 score -= 80;
             }
+        } else if ("instagram".equals(sourceSite)) {
+            if (lowered.contains("cdninstagram") || lowered.contains("fbcdn")) {
+                score -= 80;
+            }
+        } else if ("facebook".equals(sourceSite)) {
+            if (lowered.contains("fbcdn") || lowered.contains("fbsbx")) {
+                score -= 80;
+            }
+        } else if ("twitter".equals(sourceSite)) {
+            if (lowered.contains("video.twimg.com")) {
+                score -= 100;
+            }
+        } else if (isAdultLikeSite(sourceSite)) {
+            if (isMediaUrl(lowered)) {
+                score -= 100;
+            }
+            if (lowered.contains("/video/")
+                    || lowered.contains("/videos/")
+                    || lowered.contains("/embed/")
+                    || lowered.contains("/amateurjav_content/")
+                    || lowered.contains("/get/video/")) {
+                score -= 90;
+            }
         } else if (isMacCmsLikeSite(sourceSite)) {
             if (lowered.contains("/vodplay/")
                     || lowered.contains("/vod/play/")
@@ -629,7 +745,65 @@ final class MediaResolver {
         return "movieffm".equals(site)
                 || "gimy".equals(site)
                 || "xiaoyakankan".equals(site)
+                || isAdultLikeSite(site)
                 || isMacCmsLikeSite(site);
+    }
+
+    private static String adultSourceSite(String host) {
+        String lowered = host == null ? "" : host.toLowerCase(Locale.US);
+        if (lowered.contains("missav")) return "missav";
+        if (lowered.contains("jable.tv")) return "jable";
+        if (lowered.contains("njavtv")) return "njavtv";
+        if (lowered.contains("njav")) return "njav";
+        if (lowered.contains("supjav")) return "supjav";
+        if (lowered.contains("hanime1")) return "hanime1";
+        if (lowered.contains("18jav")) return "18jav";
+        if (lowered.contains("18av")) return "18av";
+        if (lowered.contains("85xvideo")) return "85xvideo";
+        if (lowered.contains("avbebe")) return "avbebe";
+        if (lowered.contains("avjoy")) return "avjoy";
+        if (lowered.contains("bestjavporn")) return "bestjavporn";
+        if (lowered.contains("javdock")) return "javdock";
+        if (lowered.contains("javfilms")) return "javfilms";
+        if (lowered.contains("tinyavideo")) return "tinyavideo";
+        if (lowered.contains("goodav17")) return "goodav17";
+        if (lowered.contains("hohoj")) return "hohoj";
+        if (lowered.contains("ggjav")) return "ggjav";
+        if (lowered.contains("tktube")) return "tktube";
+        return "";
+    }
+
+    private static boolean isAdultMediaHost(String host) {
+        String lowered = host == null ? "" : host.toLowerCase(Locale.US);
+        return !adultSourceSite(lowered).isEmpty()
+                || lowered.contains("mushroomtrack")
+                || lowered.contains("cdnlab")
+                || lowered.contains("sb-cd.com")
+                || lowered.contains("cdn77.org")
+                || lowered.contains("cc3001.dmm.co.jp")
+                || lowered.contains("dmm.co.jp");
+    }
+
+    private static boolean isAdultLikeSite(String site) {
+        return "missav".equals(site)
+                || "jable".equals(site)
+                || "njav".equals(site)
+                || "njavtv".equals(site)
+                || "supjav".equals(site)
+                || "hanime1".equals(site)
+                || "18jav".equals(site)
+                || "18av".equals(site)
+                || "85xvideo".equals(site)
+                || "avbebe".equals(site)
+                || "avjoy".equals(site)
+                || "bestjavporn".equals(site)
+                || "javdock".equals(site)
+                || "javfilms".equals(site)
+                || "tinyavideo".equals(site)
+                || "goodav17".equals(site)
+                || "hohoj".equals(site)
+                || "ggjav".equals(site)
+                || "tktube".equals(site);
     }
 
     private static boolean isMacCmsLikeSite(String site) {

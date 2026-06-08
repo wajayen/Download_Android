@@ -22,6 +22,7 @@ final class TaskStore {
     static final String STATUS_FAILED = "failed";
     static final String STATUS_CANCELLED = "cancelled";
 
+    private final Context context;
     private final SharedPreferences prefs;
 
     static final class CandidateOption {
@@ -44,7 +45,8 @@ final class TaskStore {
     }
 
     TaskStore(Context context) {
-        prefs = context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        this.context = context.getApplicationContext();
+        prefs = this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
     synchronized int recoverInterruptedTasks() {
@@ -57,7 +59,7 @@ final class TaskStore {
             }
             try {
                 task.put("status", STATUS_QUEUED);
-                task.put("message", "Recovered after service restart");
+                task.put("message", text(R.string.task_message_recovered));
                 task.put("updatedAt", System.currentTimeMillis());
                 recovered++;
             } catch (JSONException error) {
@@ -71,14 +73,25 @@ final class TaskStore {
     }
 
     synchronized JSONObject enqueue(String url, String fileName) {
+        return enqueue(url, fileName, "", "");
+    }
+
+    synchronized JSONObject enqueue(String url, String fileName, String referer, String cookieHeader) {
+        return enqueue(url, fileName, referer, cookieHeader, "{}");
+    }
+
+    synchronized JSONObject enqueue(String url, String fileName, String referer, String cookieHeader, String headersJson) {
         JSONArray tasks = loadTasks();
         JSONObject task = new JSONObject();
         try {
             task.put("id", "T" + System.currentTimeMillis());
             task.put("url", url);
             task.put("fileName", fileName);
+            task.put("referer", referer == null ? "" : referer.trim());
+            task.put("cookieHeader", cookieHeader == null ? "" : cookieHeader.trim());
+            task.put("headersJson", normalizeHeadersJson(headersJson));
             task.put("status", STATUS_QUEUED);
-            task.put("message", "等待下載");
+            task.put("message", text(R.string.task_message_queued));
             task.put("output", "");
             task.put("downloaded", 0L);
             task.put("total", -1L);
@@ -104,7 +117,7 @@ final class TaskStore {
     }
 
     synchronized void markRunning(String id) {
-        updateTask(id, STATUS_RUNNING, "下載中", null, -1L, -1L, null);
+        updateTask(id, STATUS_RUNNING, text(R.string.task_message_running), null, -1L, -1L, null);
     }
 
     synchronized void status(String id, String status) {
@@ -112,7 +125,7 @@ final class TaskStore {
     }
 
     synchronized void progress(String id, long downloaded, long total) {
-        updateTask(id, STATUS_RUNNING, "下載中", null, downloaded, total, null);
+        updateTask(id, STATUS_RUNNING, text(R.string.task_message_running), null, downloaded, total, null);
     }
 
     synchronized void resolved(String id, String sourceSite, String targetUrl, List<String> candidates, List<String> candidateLabels) {
@@ -132,39 +145,24 @@ final class TaskStore {
                     task.put("candidateLabels", candidateArray(candidateLabels));
                 }
                 task.put("updatedAt", System.currentTimeMillis());
-            } catch (JSONException jsonError) {
-                throw new IllegalStateException(jsonError);
+            } catch (JSONException error) {
+                throw new IllegalStateException(error);
             }
             break;
         }
         saveTasks(tasks);
     }
 
-    private JSONArray candidateArray(List<String> candidates) {
-        JSONArray array = new JSONArray();
-        if (candidates == null) {
-            return array;
-        }
-        int limit = Math.min(12, candidates.size());
-        for (int i = 0; i < limit; i++) {
-            String candidate = candidates.get(i);
-            if (candidate != null && !candidate.trim().isEmpty()) {
-                array.put(candidate);
-            }
-        }
-        return array;
-    }
-
     synchronized void done(String id, String output) {
-        updateTask(id, STATUS_DONE, "下載完成", output, -1L, -1L, null);
+        updateTask(id, STATUS_DONE, text(R.string.task_message_done), output, -1L, -1L, null);
     }
 
     synchronized void failed(String id, String message) {
-        updateTask(id, STATUS_FAILED, "下載失敗：" + message, null, -1L, -1L, message);
+        updateTask(id, STATUS_FAILED, text(R.string.task_message_failed, message), null, -1L, -1L, message);
     }
 
     synchronized void cancelled(String id) {
-        updateTask(id, STATUS_CANCELLED, "已取消", null, -1L, -1L, null);
+        updateTask(id, STATUS_CANCELLED, text(R.string.task_message_cancelled), null, -1L, -1L, null);
     }
 
     synchronized void cancelRunningOrQueued() {
@@ -178,7 +176,7 @@ final class TaskStore {
             if (STATUS_RUNNING.equals(status) || STATUS_QUEUED.equals(status)) {
                 try {
                     task.put("status", STATUS_CANCELLED);
-                    task.put("message", "已取消");
+                    task.put("message", text(R.string.task_message_cancelled));
                     task.put("updatedAt", System.currentTimeMillis());
                 } catch (JSONException error) {
                     throw new IllegalStateException(error);
@@ -201,7 +199,7 @@ final class TaskStore {
             }
             try {
                 task.put("status", STATUS_QUEUED);
-                task.put("message", "Queued for retry");
+                task.put("message", text(R.string.task_message_retry));
                 task.put("downloaded", 0L);
                 task.put("total", -1L);
                 task.put("error", "");
@@ -233,12 +231,14 @@ final class TaskStore {
             try {
                 task.put("url", nextUrl);
                 task.put("status", STATUS_QUEUED);
-                task.put("message", "Queued alternate source");
+                task.put("message", text(R.string.task_message_alternate));
                 task.put("resolvedUrl", nextUrl);
                 task.put("downloaded", 0L);
                 task.put("total", -1L);
                 task.put("output", "");
                 task.put("error", "");
+                task.put("referer", firstNonEmpty(task.optString("referer", ""), task.optString("url", "")));
+                task.put("headersJson", normalizeHeadersJson(task.optString("headersJson", "{}")));
                 task.put("updatedAt", System.currentTimeMillis());
             } catch (JSONException error) {
                 throw new IllegalStateException(error);
@@ -247,29 +247,6 @@ final class TaskStore {
             return task;
         }
         return null;
-    }
-
-    private String nextCandidateUrl(JSONObject task, JSONArray candidateUrls) {
-        String current = task.optString("resolvedUrl", "");
-        if (current.isEmpty()) {
-            current = task.optString("url", "");
-        }
-        int currentIndex = -1;
-        for (int i = 0; i < candidateUrls.length(); i++) {
-            if (current.equals(candidateUrls.optString(i, ""))) {
-                currentIndex = i;
-                break;
-            }
-        }
-        int start = currentIndex < 0 ? 0 : currentIndex + 1;
-        for (int offset = 0; offset < candidateUrls.length(); offset++) {
-            int index = (start + offset) % candidateUrls.length();
-            String candidate = candidateUrls.optString(index, "");
-            if (!candidate.isEmpty() && !candidate.equals(current)) {
-                return candidate;
-            }
-        }
-        return "";
     }
 
     synchronized List<CandidateOption> latestCandidateOptions() {
@@ -293,7 +270,7 @@ final class TaskStore {
                 if (url.isEmpty()) {
                     continue;
                 }
-                String marker = url.equals(current) ? " current" : "";
+                String marker = url.equals(current) ? text(R.string.source_current_marker) : "";
                 String resolverLabel = candidateLabels == null ? "" : candidateLabels.optString(c, "");
                 options.add(new CandidateOption(taskId, c, url, candidateLabel(c + 1, marker, sourceSite, url, resolverLabel)));
             }
@@ -321,12 +298,14 @@ final class TaskStore {
             try {
                 task.put("url", selectedUrl);
                 task.put("status", STATUS_QUEUED);
-                task.put("message", "Queued selected source");
+                task.put("message", text(R.string.task_message_selected_source));
                 task.put("resolvedUrl", selectedUrl);
                 task.put("downloaded", 0L);
                 task.put("total", -1L);
                 task.put("output", "");
                 task.put("error", "");
+                task.put("referer", firstNonEmpty(task.optString("referer", ""), task.optString("url", "")));
+                task.put("headersJson", normalizeHeadersJson(task.optString("headersJson", "{}")));
                 task.put("updatedAt", System.currentTimeMillis());
             } catch (JSONException error) {
                 throw new IllegalStateException(error);
@@ -335,6 +314,130 @@ final class TaskStore {
             return task;
         }
         return null;
+    }
+
+    synchronized int clearFinishedTasks() {
+        JSONArray tasks = loadTasks();
+        JSONArray kept = new JSONArray();
+        int cleared = 0;
+        for (int i = 0; i < tasks.length(); i++) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null) {
+                continue;
+            }
+            String status = task.optString("status");
+            if (STATUS_DONE.equals(status) || STATUS_FAILED.equals(status) || STATUS_CANCELLED.equals(status)) {
+                cleared++;
+                continue;
+            }
+            kept.put(task);
+        }
+        if (cleared > 0) {
+            saveTasks(kept);
+        }
+        return cleared;
+    }
+
+    synchronized String summary() {
+        JSONArray tasks = loadTasks();
+        if (tasks.length() == 0) {
+            return text(R.string.task_summary_empty);
+        }
+        StringBuilder builder = new StringBuilder();
+        int start = Math.max(0, tasks.length() - 6);
+        for (int i = tasks.length() - 1; i >= start; i--) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append("\n\n");
+            }
+            builder.append(task.optString("id")).append("  ");
+            builder.append(label(task.optString("status"))).append('\n');
+            builder.append(task.optString("fileName", "download.bin"));
+            long downloaded = task.optLong("downloaded", 0L);
+            long total = task.optLong("total", -1L);
+            if (total > 0L) {
+                builder.append('\n').append(String.format(Locale.US, "%.1f%%", downloaded * 100.0 / total));
+            } else if (downloaded > 0L) {
+                builder.append('\n').append(downloaded).append(" bytes");
+            }
+            String output = task.optString("output", "");
+            if (!output.isEmpty()) {
+                builder.append('\n').append(output);
+            }
+            appendResolvedSummary(builder, task);
+            String message = task.optString("message", "");
+            if (!message.isEmpty() && !message.equals(label(task.optString("status")))) {
+                builder.append('\n').append(message);
+            }
+        }
+        return builder.toString();
+    }
+
+    private void appendResolvedSummary(StringBuilder builder, JSONObject task) {
+        String resolvedUrl = task.optString("resolvedUrl", "");
+        if (resolvedUrl.isEmpty()) {
+            return;
+        }
+        builder.append('\n').append(text(
+                R.string.task_summary_resolved,
+                task.optString("sourceSite", "generic"),
+                task.optInt("candidateCount", 1)));
+        builder.append('\n').append(resolvedUrl);
+        JSONArray candidateUrls = task.optJSONArray("candidateUrls");
+        if (candidateUrls == null || candidateUrls.length() <= 1) {
+            return;
+        }
+        int preview = Math.min(3, candidateUrls.length());
+        for (int c = 0; c < preview; c++) {
+            String candidate = candidateUrls.optString(c, "");
+            if (!candidate.isEmpty()) {
+                builder.append('\n').append(text(R.string.task_summary_candidate, c + 1, candidate));
+            }
+        }
+        if (candidateUrls.length() > preview) {
+            builder.append('\n').append(text(R.string.task_summary_candidate_more, candidateUrls.length() - preview));
+        }
+    }
+
+    private JSONArray candidateArray(List<String> candidates) {
+        JSONArray array = new JSONArray();
+        if (candidates == null) {
+            return array;
+        }
+        int limit = Math.min(12, candidates.size());
+        for (int i = 0; i < limit; i++) {
+            String candidate = candidates.get(i);
+            if (candidate != null && !candidate.trim().isEmpty()) {
+                array.put(candidate);
+            }
+        }
+        return array;
+    }
+
+    private String nextCandidateUrl(JSONObject task, JSONArray candidateUrls) {
+        String current = task.optString("resolvedUrl", "");
+        if (current.isEmpty()) {
+            current = task.optString("url", "");
+        }
+        int currentIndex = -1;
+        for (int i = 0; i < candidateUrls.length(); i++) {
+            if (current.equals(candidateUrls.optString(i, ""))) {
+                currentIndex = i;
+                break;
+            }
+        }
+        int start = currentIndex < 0 ? 0 : currentIndex + 1;
+        for (int offset = 0; offset < candidateUrls.length(); offset++) {
+            int index = (start + offset) % candidateUrls.length();
+            String candidate = candidateUrls.optString(index, "");
+            if (!candidate.isEmpty() && !candidate.equals(current)) {
+                return candidate;
+            }
+        }
+        return "";
     }
 
     private boolean containsCandidate(JSONArray candidateUrls, String selectedUrl) {
@@ -349,6 +452,21 @@ final class TaskStore {
         return false;
     }
 
+    private String candidateLabel(int index, String marker, String sourceSite, String url, String resolverLabel) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(text(R.string.source_label_prefix, index, marker));
+        String tags = candidateTags(sourceSite, url);
+        if (!tags.isEmpty()) {
+            builder.append(" [").append(tags).append("]");
+        }
+        String cleanedLabel = compactLabel(resolverLabel);
+        if (!cleanedLabel.isEmpty()) {
+            builder.append(' ').append(cleanedLabel);
+        }
+        builder.append(" - ").append(shortUrl(url));
+        return builder.toString();
+    }
+
     private String shortUrl(String url) {
         Uri uri = Uri.parse(url);
         String host = uri.getHost() == null ? "" : uri.getHost();
@@ -358,21 +476,6 @@ final class TaskStore {
             value = url;
         }
         return value.length() > 72 ? value.substring(0, 72) + "..." : value;
-    }
-
-    private String candidateLabel(int index, String marker, String sourceSite, String url, String resolverLabel) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("Source ").append(index).append(marker);
-        String tags = candidateTags(sourceSite, url);
-        if (!tags.isEmpty()) {
-            builder.append(" [").append(tags).append("]");
-        }
-        String cleanedLabel = compactLabel(resolverLabel);
-        if (!cleanedLabel.isEmpty()) {
-            builder.append(" ").append(cleanedLabel);
-        }
-        builder.append(" - ").append(shortUrl(url));
-        return builder.toString();
     }
 
     private String compactLabel(String raw) {
@@ -422,26 +525,27 @@ final class TaskStore {
             return pMatcher.group(1) + "p";
         }
         java.util.regex.Matcher sizeMatcher = java.util.regex.Pattern.compile("(?<!\\d)(3840x2160|2560x1440|1920x1080|1280x720|854x480|640x360)(?!\\d)").matcher(loweredUrl);
-        if (sizeMatcher.find()) {
-            String size = sizeMatcher.group(1);
-            if (size.endsWith("2160")) {
-                return "2160p";
-            }
-            if (size.endsWith("1440")) {
-                return "1440p";
-            }
-            if (size.endsWith("1080")) {
-                return "1080p";
-            }
-            if (size.endsWith("720")) {
-                return "720p";
-            }
-            if (size.endsWith("480")) {
-                return "480p";
-            }
-            if (size.endsWith("360")) {
-                return "360p";
-            }
+        if (!sizeMatcher.find()) {
+            return "";
+        }
+        String size = sizeMatcher.group(1);
+        if (size.endsWith("2160")) {
+            return "2160p";
+        }
+        if (size.endsWith("1440")) {
+            return "1440p";
+        }
+        if (size.endsWith("1080")) {
+            return "1080p";
+        }
+        if (size.endsWith("720")) {
+            return "720p";
+        }
+        if (size.endsWith("480")) {
+            return "480p";
+        }
+        if (size.endsWith("360")) {
+            return "360p";
         }
         return "";
     }
@@ -460,49 +564,23 @@ final class TaskStore {
             return "EP" + htmlMatcher.group(1);
         }
         java.util.regex.Matcher dashMatcher = java.util.regex.Pattern.compile("(?:episode|ep|part|seg|segment)[-_]?(\\d+)").matcher(loweredUrl);
-        if (dashMatcher.find()) {
-            return "EP" + dashMatcher.group(1);
-        }
-        return "";
+        return dashMatcher.find() ? "EP" + dashMatcher.group(1) : "";
     }
 
     private String hostSourceTag(String loweredUrl) {
         String[][] markers = new String[][]{
-                {"xluuss", "XLU"},
-                {"lzcdn", "LZ"},
-                {"hhuus", "HH"},
-                {"qsstvw", "QSS"},
-                {"gsuus", "GS"},
-                {"bfllvip", "BFL"},
-                {"ppqrrs", "PPQ"},
-                {"qqqrst", "QQQ"},
-                {"vodcnd", "VODCND"},
-                {"phimgood", "PHIM"},
-                {"ryiplay", "RYI"},
-                {"huyall", "HUYA"},
-                {"ijycnd", "IJY"},
-                {"jisuzyv", "JISU"},
-                {"taopianplay1", "TAOPIAN"},
-                {"animevideo.php", "AniGamer"},
-                {"anime1", "Anime1"},
-                {"777tv", "777TV"},
-                {"99itv", "99iTV"},
-                {"nnyy", "NNYY"},
-                {"olevod", "Olevod"},
-                {"olehdtv", "OleHDTV"},
-                {"dramasq", "DramaSQ"},
-                {"thanju", "Thanju"},
-                {"3kor", "3KOR"},
-                {"dmcdn.net", "DMCDN"},
-                {"dailymotion", "Dailymotion"},
-                {"googlevideo", "GoogleVideo"},
-                {"youtube", "YouTube"},
-                {"bilivideo", "BiliVideo"},
-                {"bilibili", "Bilibili"},
-                {"iqiyi", "iQIYI"},
-                {"qiyi", "iQIYI"},
-                {"ikanbot", "Ikanbot"},
-                {"yfsp", "YFSP"}
+                {"xluuss", "XLU"}, {"lzcdn", "LZ"}, {"hhuus", "HH"},
+                {"qsstvw", "QSS"}, {"gsuus", "GS"}, {"bfllvip", "BFL"},
+                {"ppqrrs", "PPQ"}, {"qqqrst", "QQQ"}, {"vodcnd", "VODCND"},
+                {"phimgood", "PHIM"}, {"ryiplay", "RYI"}, {"huyall", "HUYA"},
+                {"ijycnd", "IJY"}, {"jisuzyv", "JISU"}, {"taopianplay1", "TAOPIAN"},
+                {"animevideo.php", "AniGamer"}, {"anime1", "Anime1"}, {"777tv", "777TV"},
+                {"99itv", "99iTV"}, {"nnyy", "NNYY"}, {"olevod", "Olevod"},
+                {"olehdtv", "OleHDTV"}, {"dramasq", "DramaSQ"}, {"thanju", "Thanju"},
+                {"3kor", "3KOR"}, {"dmcdn.net", "DMCDN"}, {"dailymotion", "Dailymotion"},
+                {"googlevideo", "GoogleVideo"}, {"youtube", "YouTube"}, {"bilivideo", "BiliVideo"},
+                {"bilibili", "Bilibili"}, {"iqiyi", "iQIYI"}, {"qiyi", "iQIYI"},
+                {"ikanbot", "Ikanbot"}, {"yfsp", "YFSP"}
         };
         for (String[] marker : markers) {
             if (loweredUrl.contains(marker[0])) {
@@ -519,6 +597,23 @@ final class TaskStore {
         return sourceSite.trim();
     }
 
+    private String firstNonEmpty(String first, String second) {
+        String value = first == null ? "" : first.trim();
+        if (!value.isEmpty()) {
+            return value;
+        }
+        return second == null ? "" : second.trim();
+    }
+
+    private String normalizeHeadersJson(String headersJson) {
+        String raw = headersJson == null || headersJson.trim().isEmpty() ? "{}" : headersJson.trim();
+        try {
+            return new JSONObject(raw).toString();
+        } catch (Exception ignored) {
+            return "{}";
+        }
+    }
+
     private void appendTag(StringBuilder tags, String value) {
         if (value == null || value.isEmpty()) {
             return;
@@ -527,87 +622,6 @@ final class TaskStore {
             tags.append(' ');
         }
         tags.append(value);
-    }
-
-    synchronized int clearFinishedTasks() {
-        JSONArray tasks = loadTasks();
-        JSONArray kept = new JSONArray();
-        int cleared = 0;
-        for (int i = 0; i < tasks.length(); i++) {
-            JSONObject task = tasks.optJSONObject(i);
-            if (task == null) {
-                continue;
-            }
-            String status = task.optString("status");
-            if (STATUS_DONE.equals(status) || STATUS_FAILED.equals(status) || STATUS_CANCELLED.equals(status)) {
-                cleared++;
-                continue;
-            }
-            kept.put(task);
-        }
-        if (cleared > 0) {
-            saveTasks(kept);
-        }
-        return cleared;
-    }
-
-    synchronized String summary() {
-        JSONArray tasks = loadTasks();
-        if (tasks.length() == 0) {
-            return "尚未開始下載";
-        }
-        StringBuilder builder = new StringBuilder();
-        int start = Math.max(0, tasks.length() - 6);
-        for (int i = tasks.length() - 1; i >= start; i--) {
-            JSONObject task = tasks.optJSONObject(i);
-            if (task == null) {
-                continue;
-            }
-            if (builder.length() > 0) {
-                builder.append("\n\n");
-            }
-            builder.append(task.optString("id")).append("  ");
-            builder.append(label(task.optString("status"))).append('\n');
-            builder.append(task.optString("fileName", "download.bin"));
-            long downloaded = task.optLong("downloaded", 0L);
-            long total = task.optLong("total", -1L);
-            if (total > 0L) {
-                builder.append('\n').append(String.format(Locale.US, "%.1f%%", downloaded * 100.0 / total));
-            } else if (downloaded > 0L) {
-                builder.append('\n').append(downloaded).append(" bytes");
-            }
-            String output = task.optString("output", "");
-            if (!output.isEmpty()) {
-                builder.append('\n').append(output);
-            }
-            String resolvedUrl = task.optString("resolvedUrl", "");
-            if (!resolvedUrl.isEmpty()) {
-                builder.append('\n')
-                        .append("resolved ")
-                        .append(task.optString("sourceSite", "generic"))
-                        .append(" candidates=")
-                        .append(task.optInt("candidateCount", 1));
-                builder.append('\n').append(resolvedUrl);
-                JSONArray candidateUrls = task.optJSONArray("candidateUrls");
-                if (candidateUrls != null && candidateUrls.length() > 1) {
-                    int preview = Math.min(3, candidateUrls.length());
-                    for (int c = 0; c < preview; c++) {
-                        String candidate = candidateUrls.optString(c, "");
-                        if (!candidate.isEmpty()) {
-                            builder.append('\n').append("candidate ").append(c + 1).append(": ").append(candidate);
-                        }
-                    }
-                    if (candidateUrls.length() > preview) {
-                        builder.append('\n').append("candidate ... +").append(candidateUrls.length() - preview);
-                    }
-                }
-            }
-            String message = task.optString("message", "");
-            if (!message.isEmpty() && !message.equals(label(task.optString("status")))) {
-                builder.append('\n').append(message);
-            }
-        }
-        return builder.toString();
     }
 
     private void updateTask(String id, String status, String message, String output, long downloaded, long total, String error) {
@@ -675,20 +689,24 @@ final class TaskStore {
 
     private String label(String status) {
         if (STATUS_QUEUED.equals(status)) {
-            return "等待中";
+            return text(R.string.task_label_queued);
         }
         if (STATUS_RUNNING.equals(status)) {
-            return "下載中";
+            return text(R.string.task_label_running);
         }
         if (STATUS_DONE.equals(status)) {
-            return "下載完成";
+            return text(R.string.task_label_done);
         }
         if (STATUS_FAILED.equals(status)) {
-            return "下載失敗";
+            return text(R.string.task_label_failed);
         }
         if (STATUS_CANCELLED.equals(status)) {
-            return "已取消";
+            return text(R.string.task_label_cancelled);
         }
         return status == null ? "" : status;
+    }
+
+    private String text(int resId, Object... args) {
+        return context.getString(resId, args);
     }
 }
