@@ -129,6 +129,10 @@ final class TaskStore {
     }
 
     synchronized void resolved(String id, String sourceSite, String targetUrl, List<String> candidates, List<String> candidateLabels) {
+        resolved(id, sourceSite, targetUrl, candidates, candidateLabels, null);
+    }
+
+    synchronized void resolved(String id, String sourceSite, String targetUrl, List<String> candidates, List<String> candidateLabels, List<String> candidateReferers) {
         int candidateCount = candidates == null ? 0 : candidates.size();
         JSONArray tasks = loadTasks();
         for (int i = 0; i < tasks.length(); i++) {
@@ -143,6 +147,9 @@ final class TaskStore {
                 task.put("candidateUrls", candidateArray(candidates));
                 if (candidateLabels != null && !candidateLabels.isEmpty()) {
                     task.put("candidateLabels", candidateArray(candidateLabels));
+                }
+                if (candidateReferers != null && !candidateReferers.isEmpty()) {
+                    task.put("candidateReferers", candidateArray(candidateReferers));
                 }
                 task.put("updatedAt", System.currentTimeMillis());
             } catch (JSONException error) {
@@ -228,6 +235,8 @@ final class TaskStore {
             if (nextUrl.isEmpty()) {
                 continue;
             }
+            int nextIndex = candidateIndex(candidateUrls, nextUrl);
+            String previousUrl = task.optString("url", "");
             try {
                 task.put("url", nextUrl);
                 task.put("status", STATUS_QUEUED);
@@ -237,7 +246,7 @@ final class TaskStore {
                 task.put("total", -1L);
                 task.put("output", "");
                 task.put("error", "");
-                task.put("referer", firstNonEmpty(task.optString("referer", ""), task.optString("url", "")));
+                task.put("referer", candidateRefererAt(task, nextIndex, task.optString("referer", ""), previousUrl));
                 task.put("headersJson", normalizeHeadersJson(task.optString("headersJson", "{}")));
                 task.put("updatedAt", System.currentTimeMillis());
             } catch (JSONException error) {
@@ -295,6 +304,8 @@ final class TaskStore {
             if (!containsCandidate(candidateUrls, selectedUrl)) {
                 return null;
             }
+            int selectedIndex = candidateIndex(candidateUrls, selectedUrl);
+            String previousUrl = task.optString("url", "");
             try {
                 task.put("url", selectedUrl);
                 task.put("status", STATUS_QUEUED);
@@ -304,7 +315,7 @@ final class TaskStore {
                 task.put("total", -1L);
                 task.put("output", "");
                 task.put("error", "");
-                task.put("referer", firstNonEmpty(task.optString("referer", ""), task.optString("url", "")));
+                task.put("referer", candidateRefererAt(task, selectedIndex, task.optString("referer", ""), previousUrl));
                 task.put("headersJson", normalizeHeadersJson(task.optString("headersJson", "{}")));
                 task.put("updatedAt", System.currentTimeMillis());
             } catch (JSONException error) {
@@ -481,6 +492,31 @@ final class TaskStore {
             }
         }
         return false;
+    }
+
+    private int candidateIndex(JSONArray candidateUrls, String selectedUrl) {
+        if (candidateUrls == null || selectedUrl == null) {
+            return -1;
+        }
+        for (int i = 0; i < candidateUrls.length(); i++) {
+            if (selectedUrl.equals(candidateUrls.optString(i, ""))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private String candidateRefererAt(JSONObject task, int index, String existingReferer, String previousUrl) {
+        if (index >= 0) {
+            JSONArray candidateReferers = task.optJSONArray("candidateReferers");
+            if (candidateReferers != null) {
+                String referer = candidateReferers.optString(index, "").trim();
+                if (!referer.isEmpty()) {
+                    return referer;
+                }
+            }
+        }
+        return firstNonEmpty(existingReferer, previousUrl);
     }
 
     private String candidateLabel(int index, String marker, String sourceSite, String url, String resolverLabel) {

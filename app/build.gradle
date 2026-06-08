@@ -10,7 +10,7 @@ android {
         applicationId "tw.wajay.aitestdownloader"
         minSdk 23
         targetSdk 35
-        versionCode 60
-        versionName "0.60.0"
+        versionCode 70
+        versionName "0.70.0"
     }
 }

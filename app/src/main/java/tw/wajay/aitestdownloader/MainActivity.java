@@ -121,34 +121,6 @@ public final class MainActivity extends Activity {
         settingsButton.setOnClickListener(view -> showSettingsMenu(view));
         toolbar.addView(settingsButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        TextView queueTitle = new TextView(this);
-        queueTitle.setText(getString(R.string.section_download_queue));
-        styleSectionTitle(queueTitle);
-        queueTitle.setPadding(0, dp(12), 0, dp(4));
-        root.addView(queueTitle, matchWrap());
-
-        LinearLayout queueCard = contentPanel();
-        root.addView(queueCard, matchWrap());
-
-        statusText = new TextView(this);
-        statusText.setText(getString(R.string.status_idle));
-        statusText.setTextSize(15);
-        statusText.setTextColor(TEXT_SECONDARY);
-        statusText.setMinLines(6);
-        statusText.setGravity(Gravity.TOP | Gravity.START);
-        statusText.setLineSpacing(dp(2), 1.0f);
-        statusText.setPadding(dp(2), 0, dp(2), dp(10));
-        queueCard.addView(statusText, matchWrap());
-
-        sourceSpinner = new Spinner(this);
-        queueCard.addView(sourceSpinner, matchWrap());
-
-        Button selectedSourceButton = new Button(this);
-        selectedSourceButton.setText(getString(R.string.action_queue_selected_source));
-        styleSecondaryButton(selectedSourceButton);
-        selectedSourceButton.setOnClickListener(view -> retrySelectedSource());
-        queueCard.addView(selectedSourceButton, matchWrap());
-
         TextView addTitle = new TextView(this);
         addTitle.setText(getString(R.string.section_new_download));
         styleSectionTitle(addTitle);
@@ -178,6 +150,34 @@ public final class MainActivity extends Activity {
         stylePrimaryButton(downloadButton);
         downloadButton.setOnClickListener(view -> startDownload());
         inputPanel.addView(downloadButton, matchWrap());
+
+        TextView queueTitle = new TextView(this);
+        queueTitle.setText(getString(R.string.section_download_queue));
+        styleSectionTitle(queueTitle);
+        queueTitle.setPadding(0, dp(12), 0, dp(4));
+        root.addView(queueTitle, matchWrap());
+
+        LinearLayout queueCard = contentPanel();
+        root.addView(queueCard, matchWrap());
+
+        statusText = new TextView(this);
+        statusText.setText(getString(R.string.status_idle));
+        statusText.setTextSize(15);
+        statusText.setTextColor(TEXT_SECONDARY);
+        statusText.setMinLines(6);
+        statusText.setGravity(Gravity.TOP | Gravity.START);
+        statusText.setLineSpacing(dp(2), 1.0f);
+        statusText.setPadding(dp(2), 0, dp(2), dp(10));
+        queueCard.addView(statusText, matchWrap());
+
+        sourceSpinner = new Spinner(this);
+        queueCard.addView(sourceSpinner, matchWrap());
+
+        Button selectedSourceButton = new Button(this);
+        selectedSourceButton.setText(getString(R.string.action_queue_selected_source));
+        styleSecondaryButton(selectedSourceButton);
+        selectedSourceButton.setOnClickListener(view -> retrySelectedSource());
+        queueCard.addView(selectedSourceButton, matchWrap());
 
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(BACKGROUND);
@@ -415,11 +415,17 @@ public final class MainActivity extends Activity {
         return "User-Agent".equals(name)
                 || "Accept".equals(name)
                 || "Accept-Language".equals(name)
+                || "Accept-Encoding".equals(name)
                 || "Authorization".equals(name)
+                || "Cache-Control".equals(name)
+                || "DNT".equals(name)
+                || "Pragma".equals(name)
+                || "Priority".equals(name)
                 || "X-Requested-With".equals(name)
                 || "Sec-Fetch-Site".equals(name)
                 || "Sec-Fetch-Mode".equals(name)
-                || "Sec-Fetch-Dest".equals(name);
+                || "Sec-Fetch-Dest".equals(name)
+                || "Sec-Fetch-User".equals(name);
     }
 
     private boolean isRefererHeader(String name) {
@@ -431,25 +437,42 @@ public final class MainActivity extends Activity {
         if ("user-agent".equals(name)) return "User-Agent";
         if ("accept".equals(name)) return "Accept";
         if ("accept-language".equals(name)) return "Accept-Language";
+        if ("accept-encoding".equals(name)) return "Accept-Encoding";
         if ("authorization".equals(name)) return "Authorization";
+        if ("cache-control".equals(name)) return "Cache-Control";
         if ("cookie".equals(name)) return "Cookie";
+        if ("dnt".equals(name)) return "DNT";
+        if ("pragma".equals(name)) return "Pragma";
+        if ("priority".equals(name)) return "Priority";
         if ("referer".equals(name)) return "Referer";
         if ("referrer".equals(name)) return "Referrer";
         if ("x-requested-with".equals(name)) return "X-Requested-With";
         if ("sec-fetch-site".equals(name)) return "Sec-Fetch-Site";
         if ("sec-fetch-mode".equals(name)) return "Sec-Fetch-Mode";
         if ("sec-fetch-dest".equals(name)) return "Sec-Fetch-Dest";
+        if ("sec-fetch-user".equals(name)) return "Sec-Fetch-User";
         return rawName == null ? "" : rawName.trim();
     }
 
     private void putHeader(JSONObject headers, String name, String value) {
         try {
             if (value != null && !value.trim().isEmpty()) {
-                headers.put(name, value.trim());
+                String cleaned = sanitizeRequestHeaderValue(name, value);
+                if (!cleaned.isEmpty()) {
+                    headers.put(name, cleaned);
+                }
             }
         } catch (Exception ignored) {
             // Ignore malformed pasted header values.
         }
+    }
+
+    private String sanitizeRequestHeaderValue(String name, String value) {
+        String cleaned = value == null ? "" : value.replace('\r', ' ').replace('\n', ' ').trim();
+        if ("Accept-Encoding".equals(name)) {
+            return cleaned.equalsIgnoreCase("identity") ? "identity" : "";
+        }
+        return cleaned;
     }
 
     private String firstUrl(String value) {

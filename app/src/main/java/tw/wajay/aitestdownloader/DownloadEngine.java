@@ -24,6 +24,8 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.URL;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -147,6 +149,9 @@ final class DownloadEngine {
     interface Callback {
         void onStatus(String text);
         void onResolved(String sourceSite, String targetUrl, List<String> candidates, List<String> candidateLabels);
+        default void onResolved(String sourceSite, String targetUrl, List<String> candidates, List<String> candidateLabels, List<String> candidateReferers) {
+            onResolved(sourceSite, targetUrl, candidates, candidateLabels);
+        }
         void onProgress(long downloaded, long total);
         void onDone(File output);
         void onError(Exception error);
@@ -457,7 +462,7 @@ final class DownloadEngine {
                 List<String> fallbackUrls = new ArrayList<>();
                 String refererUrl = firstNonEmpty(providedReferer, "");
                 if (!isMediaUrl(rawUrl)) {
-                    ResolvedTarget resolvedTarget = resolvePageToMedia(rawUrl, callback);
+                    ResolvedTarget resolvedTarget = resolvePageToMedia(rawUrl, refererUrl, callback);
                     targetUrl = resolvedTarget.primaryUrl;
                     sourceSite = resolvedTarget.sourceSite;
                     fallbackUrls = resolvedTarget.fallbackUrls;
@@ -510,7 +515,8 @@ final class DownloadEngine {
                 }
                 callback.onResolved("search", targetUrl,
                         mergedSearchCandidates(results, i, targetUrl, fallbackUrls),
-                        mergedSearchCandidateLabels(results, i, targetUrl, fallbackUrls));
+                        mergedSearchCandidateLabels(results, i, targetUrl, fallbackUrls),
+                        mergedSearchCandidateReferers(results, i, targetUrl, fallbackUrls, refererUrl));
                 String fileName = requestedName == null || requestedName.trim().isEmpty()
                         ? FileNames.choose(Uri.parse(targetUrl), FileNames.sanitize(query) + ".mp4")
                         : FileNames.choose(Uri.parse(targetUrl), requestedName);
@@ -563,6 +569,27 @@ final class DownloadEngine {
             addUniqueWithLabel(urls, labels, results.get(i).url, context.getString(R.string.search_candidate_previous, results.get(i).title));
         }
         return labels;
+    }
+
+    private List<String> mergedSearchCandidateReferers(
+            List<VideoSearchResolver.Result> results,
+            int selectedIndex,
+            String targetUrl,
+            List<String> fallbackUrls,
+            String selectedRefererUrl) {
+        List<String> referers = new ArrayList<>();
+        List<String> urls = new ArrayList<>();
+        addUniqueWithLabel(urls, referers, targetUrl, selectedRefererUrl);
+        for (String fallbackUrl : fallbackUrls) {
+            addUniqueWithLabel(urls, referers, fallbackUrl, selectedRefererUrl);
+        }
+        for (int i = selectedIndex + 1; i < results.size(); i++) {
+            addUniqueWithLabel(urls, referers, results.get(i).url, results.get(i).refererUrl);
+        }
+        for (int i = 0; i < selectedIndex; i++) {
+            addUniqueWithLabel(urls, referers, results.get(i).url, results.get(i).refererUrl);
+        }
+        return referers;
     }
 
     private void addUnique(List<String> urls, String url) {
@@ -626,11 +653,17 @@ final class DownloadEngine {
         return "User-Agent".equals(name)
                 || "Accept".equals(name)
                 || "Accept-Language".equals(name)
+                || "Accept-Encoding".equals(name)
                 || "Authorization".equals(name)
+                || "Cache-Control".equals(name)
+                || "DNT".equals(name)
+                || "Pragma".equals(name)
+                || "Priority".equals(name)
                 || "X-Requested-With".equals(name)
                 || "Sec-Fetch-Site".equals(name)
                 || "Sec-Fetch-Mode".equals(name)
-                || "Sec-Fetch-Dest".equals(name);
+                || "Sec-Fetch-Dest".equals(name)
+                || "Sec-Fetch-User".equals(name);
     }
     void cancel() {
         cancelled.set(true);
@@ -829,12 +862,9 @@ final class DownloadEngine {
 
         callback.onStatus(context.getString(R.string.engine_dash_representation, dashPlanDescription(plan)));
         try (FileOutputStream fos = new FileOutputStream(part, append);
-             BufferedOutputStream outputStream = new BufferedOutputStream(fos)) {
+            BufferedOutputStream outputStream = new BufferedOutputStream(fos)) {
             if (startIndex == 0) {
-                byte[] init = readBytes(plan.initUrl, plan.initRange, effectiveReferer(refererUrl, plan.manifestUrl));
-                if (init.length == 0) {
-                    throw new IOException("empty DASH init segment");
-                }
+                byte[] init = readBytesWithRetry(plan.initUrl, plan.initRange, effectiveReferer(refererUrl, plan.manifestUrl), "empty DASH init segment");
                 outputStream.write(init);
                 outputStream.flush();
             }
@@ -845,10 +875,7 @@ final class DownloadEngine {
                 }
                 callback.onStatus(context.getString(R.string.engine_downloading_dash_segment, index + 1, plan.segments.size()));
                 DashSegment segment = plan.segments.get(index);
-                byte[] data = readBytes(segment.url, segment.byteRange, effectiveReferer(refererUrl, plan.manifestUrl));
-                if (data.length == 0) {
-                    throw new IOException("empty DASH segment");
-                }
+                byte[] data = readBytesWithRetry(segment.url, segment.byteRange, effectiveReferer(refererUrl, plan.manifestUrl), "empty DASH segment");
                 outputStream.write(data);
                 outputStream.flush();
                 saveDashCheckpoint(checkpoint, plan, index + 1);
@@ -913,6 +940,7 @@ final class DownloadEngine {
         connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36 AI-Test-Downloader/0.31");
         connection.setRequestProperty("Accept", "*/*");
         connection.setRequestProperty("Accept-Language", "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7");
+        connection.setRequestProperty("Accept-Encoding", "identity");
         synchronized (requestHeaders) {
             for (Map.Entry<String, String> header : requestHeaders.entrySet()) {
                 connection.setRequestProperty(header.getKey(), header.getValue());
@@ -935,7 +963,7 @@ final class DownloadEngine {
 
     private String readText(String rawUrl, String refererUrl) throws IOException {
         HttpURLConnection connection = open(rawUrl, refererUrl);
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), charsetFromContentType(connection.getContentType())))) {
             StringBuilder builder = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) {
@@ -995,17 +1023,19 @@ final class DownloadEngine {
         final int width;
         final int height;
         final String codecs;
+        final boolean videoLike;
         final String initUrl;
         final String initRange;
         final List<DashSegment> segments;
 
-        DashPlan(String manifestUrl, String representationId, int bandwidth, int width, int height, String codecs, String initUrl, String initRange, List<DashSegment> segments) {
+        DashPlan(String manifestUrl, String representationId, int bandwidth, int width, int height, String codecs, boolean videoLike, String initUrl, String initRange, List<DashSegment> segments) {
             this.manifestUrl = manifestUrl;
             this.representationId = representationId;
             this.bandwidth = bandwidth;
             this.width = width;
             this.height = height;
             this.codecs = codecs == null ? "" : codecs;
+            this.videoLike = videoLike;
             this.initUrl = initUrl;
             this.initRange = initRange;
             this.segments = segments;
@@ -1030,7 +1060,7 @@ final class DownloadEngine {
         try (java.io.OutputStream output = connection.getOutputStream()) {
             output.write(body.getBytes("UTF-8"));
         }
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), charsetFromContentType(connection.getContentType())))) {
             StringBuilder builder = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) {
@@ -1078,6 +1108,21 @@ final class DownloadEngine {
         return null;
     }
 
+    private Charset charsetFromContentType(String contentType) {
+        if (contentType == null || contentType.trim().isEmpty()) {
+            return StandardCharsets.UTF_8;
+        }
+        Matcher matcher = Pattern.compile("charset\\s*=\\s*['\"]?([^;\\s'\"]+)", Pattern.CASE_INSENSITIVE).matcher(contentType);
+        if (!matcher.find()) {
+            return StandardCharsets.UTF_8;
+        }
+        try {
+            return Charset.forName(matcher.group(1).trim());
+        } catch (Exception ignored) {
+            return StandardCharsets.UTF_8;
+        }
+    }
+
     private String normalizeProtocolRelative(String rawUrl) {
         String value = rawUrl == null ? "" : rawUrl.trim().replace("\\/", "/");
         if (value.startsWith("//")) {
@@ -1099,12 +1144,12 @@ final class DownloadEngine {
             for (Element period : childElements(root, "Period")) {
                 String periodBase = joinUrl(mpdBase, firstBaseUrl(period));
                 for (Element adaptation : childElements(period, "AdaptationSet")) {
-                    if (isDashAudioElement(adaptation)) {
+                    if (isDashNonVideoElement(adaptation)) {
                         continue;
                     }
                     String adaptationBase = joinUrl(periodBase, firstBaseUrl(adaptation));
                     for (Element representation : childElements(adaptation, "Representation")) {
-                        if (isDashAudioElement(representation)) {
+                        if (isDashNonVideoElement(representation)) {
                             continue;
                         }
                         DashPlan candidate = parseDashRepresentation(
@@ -1146,14 +1191,37 @@ final class DownloadEngine {
         return null;
     }
 
-    private boolean isDashAudioElement(Element element) {
+    private boolean isDashNonVideoElement(Element element) {
         String mediaType = firstNonEmpty(attrOrEmpty(element, "mimeType"), attrOrEmpty(element, "contentType")).toLowerCase(Locale.US);
         String codecs = attrOrEmpty(element, "codecs").toLowerCase(Locale.US);
         return mediaType.contains("audio")
+                || mediaType.contains("text")
+                || mediaType.contains("subtitle")
+                || mediaType.contains("application/ttml")
+                || mediaType.contains("image")
                 || codecs.startsWith("mp4a")
                 || codecs.startsWith("ac-3")
                 || codecs.startsWith("ec-3")
-                || codecs.startsWith("opus");
+                || codecs.startsWith("opus")
+                || codecs.startsWith("stpp")
+                || codecs.startsWith("wvtt");
+    }
+
+    private boolean isDashVideoLike(Element adaptation, Element representation, int width, int height, String codecs) {
+        String mediaType = (attrOrEmpty(adaptation, "mimeType") + " "
+                + attrOrEmpty(adaptation, "contentType") + " "
+                + attrOrEmpty(representation, "mimeType") + " "
+                + attrOrEmpty(representation, "contentType")).toLowerCase(Locale.US);
+        String codecText = codecs == null ? "" : codecs.toLowerCase(Locale.US);
+        return mediaType.contains("video")
+                || width > 0
+                || height > 0
+                || codecText.startsWith("avc")
+                || codecText.startsWith("hev")
+                || codecText.startsWith("hvc")
+                || codecText.startsWith("vp8")
+                || codecText.startsWith("vp9")
+                || codecText.startsWith("av01");
     }
 
     private DashPlan parseDashSegmentTemplate(String manifestUrl, Element adaptation, Element representation, Element template, String baseUrl, String periodDuration) throws IOException {
@@ -1162,6 +1230,7 @@ final class DownloadEngine {
         int width = parseInt(firstNonEmpty(attrOrEmpty(representation, "width"), attrOrEmpty(adaptation, "width")), 0);
         int height = parseInt(firstNonEmpty(attrOrEmpty(representation, "height"), attrOrEmpty(adaptation, "height")), 0);
         String codecs = firstNonEmpty(attrOrEmpty(representation, "codecs"), attrOrEmpty(adaptation, "codecs"));
+        boolean videoLike = isDashVideoLike(adaptation, representation, width, height, codecs);
         String initPattern = attrOrEmpty(template, "initialization");
         String mediaPattern = attrOrEmpty(template, "media");
         if (initPattern.isEmpty() || mediaPattern.isEmpty()) {
@@ -1174,7 +1243,9 @@ final class DownloadEngine {
         if (timeline != null) {
             long number = startNumber;
             long time = -1L;
-            for (Element s : childElements(timeline, "S")) {
+            List<Element> timelineSegments = childElements(timeline, "S");
+            for (int entryIndex = 0; entryIndex < timelineSegments.size(); entryIndex++) {
+                Element s = timelineSegments.get(entryIndex);
                 long duration = parseLong(attrOrEmpty(s, "d"), 0L);
                 if (duration <= 0L) {
                     continue;
@@ -1185,7 +1256,7 @@ final class DownloadEngine {
                     time = 0L;
                 }
                 int repeat = parseInt(attrOrEmpty(s, "r"), 0);
-                int count = Math.max(1, repeat + 1);
+                int count = dashTimelineRepeatCount(repeat, duration, time, entryIndex, timelineSegments, periodDuration, timescale);
                 for (int i = 0; i < count && segments.size() < MAX_DASH_DURATION_SEGMENTS; i++) {
                     String mediaUrl = fillDashTemplate(mediaPattern, representationId, bandwidth, number, time);
                     segments.add(new DashSegment(joinUrl(baseUrl, mediaUrl), null));
@@ -1203,7 +1274,42 @@ final class DownloadEngine {
             }
         }
         String initUrl = joinUrl(baseUrl, fillDashTemplate(initPattern, representationId, bandwidth, startNumber, -1L));
-        return new DashPlan(manifestUrl, representationId, bandwidth, width, height, codecs, initUrl, null, segments);
+        return new DashPlan(manifestUrl, representationId, bandwidth, width, height, codecs, videoLike, initUrl, null, segments);
+    }
+
+    private int dashTimelineRepeatCount(
+            int repeat,
+            long duration,
+            long time,
+            int entryIndex,
+            List<Element> timelineSegments,
+            String periodDuration,
+            int timescale) {
+        if (repeat >= 0) {
+            return Math.max(1, repeat + 1);
+        }
+        long nextTime = nextDashTimelineTime(entryIndex, timelineSegments);
+        if (nextTime > time && duration > 0L) {
+            return Math.max(1, (int) Math.min(MAX_DASH_DURATION_SEGMENTS, (nextTime - time) / duration));
+        }
+        long totalMillis = parseIsoDurationMillis(periodDuration);
+        if (totalMillis > 0L && timescale > 0 && duration > 0L) {
+            double totalTicks = totalMillis * (timescale / 1000.0);
+            if (totalTicks > time) {
+                return Math.max(1, (int) Math.min(MAX_DASH_DURATION_SEGMENTS, Math.ceil((totalTicks - time) / duration)));
+            }
+        }
+        return 1;
+    }
+
+    private long nextDashTimelineTime(int entryIndex, List<Element> timelineSegments) {
+        for (int i = entryIndex + 1; i < timelineSegments.size(); i++) {
+            String rawTime = attrOrEmpty(timelineSegments.get(i), "t");
+            if (!rawTime.isEmpty()) {
+                return parseLong(rawTime, -1L);
+            }
+        }
+        return -1L;
     }
 
     private DashPlan parseDashSegmentList(String manifestUrl, Element adaptation, Element representation, Element list, String baseUrl) {
@@ -1212,6 +1318,7 @@ final class DownloadEngine {
         int width = parseInt(firstNonEmpty(attrOrEmpty(representation, "width"), attrOrEmpty(adaptation, "width")), 0);
         int height = parseInt(firstNonEmpty(attrOrEmpty(representation, "height"), attrOrEmpty(adaptation, "height")), 0);
         String codecs = firstNonEmpty(attrOrEmpty(representation, "codecs"), attrOrEmpty(adaptation, "codecs"));
+        boolean videoLike = isDashVideoLike(adaptation, representation, width, height, codecs);
         Element init = firstElement(list, "Initialization");
         String initUrl = init == null ? "" : joinUrl(baseUrl, firstNonEmpty(attrOrEmpty(init, "sourceURL"), attrOrEmpty(init, "sourceUrl")));
         String initRange = init == null ? null : firstNonEmpty(attrOrEmpty(init, "range"), attrOrEmpty(init, "mediaRange"));
@@ -1224,7 +1331,7 @@ final class DownloadEngine {
             String range = firstNonEmpty(attrOrEmpty(segment, "mediaRange"), attrOrEmpty(segment, "range"));
             segments.add(new DashSegment(joinUrl(baseUrl, media), range.isEmpty() ? null : range));
         }
-        return initUrl.isEmpty() || segments.isEmpty() ? null : new DashPlan(manifestUrl, representationId, bandwidth, width, height, codecs, initUrl, initRange, segments);
+        return initUrl.isEmpty() || segments.isEmpty() ? null : new DashPlan(manifestUrl, representationId, bandwidth, width, height, codecs, videoLike, initUrl, initRange, segments);
     }
 
     private DashPlan parseDashSegmentBase(String manifestUrl, Element adaptation, Element representation, Element segmentBase, String baseUrl) {
@@ -1233,6 +1340,7 @@ final class DownloadEngine {
         int width = parseInt(firstNonEmpty(attrOrEmpty(representation, "width"), attrOrEmpty(adaptation, "width")), 0);
         int height = parseInt(firstNonEmpty(attrOrEmpty(representation, "height"), attrOrEmpty(adaptation, "height")), 0);
         String codecs = firstNonEmpty(attrOrEmpty(representation, "codecs"), attrOrEmpty(adaptation, "codecs"));
+        boolean videoLike = isDashVideoLike(adaptation, representation, width, height, codecs);
         String mediaUrl = joinUrl(baseUrl, "");
         if (mediaUrl.isEmpty()) {
             return null;
@@ -1250,10 +1358,14 @@ final class DownloadEngine {
         } else {
             segments.add(new DashSegment(mediaUrl, null));
         }
-        return new DashPlan(manifestUrl, representationId, bandwidth, width, height, codecs, initUrl, initRange, segments);
+        return new DashPlan(manifestUrl, representationId, bandwidth, width, height, codecs, videoLike, initUrl, initRange, segments);
     }
 
     private int compareDashPlan(DashPlan left, DashPlan right) {
+        int typeCompare = Boolean.compare(left != null && left.videoLike, right != null && right.videoLike);
+        if (typeCompare != 0) {
+            return typeCompare;
+        }
         int heightCompare = Integer.compare(left == null ? 0 : left.height, right == null ? 0 : right.height);
         if (heightCompare != 0) {
             return heightCompare;
@@ -1447,10 +1559,20 @@ final class DownloadEngine {
         int mediaSequence = 0;
         int segmentIndex = 0;
         boolean discontinuity = false;
+        boolean hasEndList = false;
+        boolean playlistTypeVod = false;
         String pendingByteRange = null;
         Map<String, Long> nextByteRangeOffsets = new LinkedHashMap<>();
         for (String rawLine : lines) {
             String line = rawLine.trim();
+            if ("#EXT-X-ENDLIST".equalsIgnoreCase(line)) {
+                hasEndList = true;
+                continue;
+            }
+            if (line.toUpperCase(Locale.US).startsWith("#EXT-X-PLAYLIST-TYPE:")) {
+                playlistTypeVod = line.toUpperCase(Locale.US).contains("VOD");
+                continue;
+            }
             if (line.startsWith("#EXT-X-MEDIA-SEQUENCE:")) {
                 mediaSequence = parseTrailingInt(line, 0);
                 continue;
@@ -1486,7 +1608,7 @@ final class DownloadEngine {
                 pendingByteRange = null;
             }
         }
-        return new HlsPlaylist(manifestUrl, segments);
+        return new HlsPlaylist(manifestUrl, segments, hasEndList || playlistTypeVod);
     }
 
     private String normalizeHlsSegmentByteRange(String segmentUrl, String rawByteRange, Map<String, Long> nextOffsets) {
@@ -1527,10 +1649,7 @@ final class DownloadEngine {
         if (writtenMaps.contains(mapKey)) {
             return;
         }
-        byte[] mapBytes = readBytes(segment.map.uri, segment.map.byteRange, refererUrl);
-        if (mapBytes.length == 0) {
-            throw new IOException("empty HLS init map");
-        }
+        byte[] mapBytes = readBytesWithRetry(segment.map.uri, segment.map.byteRange, refererUrl, "empty HLS init map");
         outputStream.write(mapBytes);
         writtenMaps.add(mapKey);
     }
@@ -1552,6 +1671,25 @@ final class DownloadEngine {
             }
         }
         throw last == null ? new IOException("segment failed") : last;
+    }
+
+    private byte[] readBytesWithRetry(String rawUrl, String byteRange, String refererUrl, String emptyMessage) throws IOException {
+        IOException last = null;
+        for (int attempt = 1; attempt <= SEGMENT_RETRY_LIMIT; attempt++) {
+            try {
+                byte[] data = readBytes(rawUrl, byteRange, refererUrl);
+                if (data.length == 0) {
+                    throw new IOException(emptyMessage);
+                }
+                return data;
+            } catch (IOException error) {
+                last = error;
+                if (cancelled.get()) {
+                    throw error;
+                }
+            }
+        }
+        throw last == null ? new IOException(emptyMessage) : last;
     }
 
     private byte[] decryptIfNeeded(HlsSegment segment, byte[] data, String refererUrl) throws IOException {
@@ -1917,6 +2055,10 @@ final class DownloadEngine {
     }
 
     private int loadHlsCheckpoint(File checkpoint, HlsPlaylist playlist, File part) {
+        if (!playlist.resumable) {
+            checkpoint.delete();
+            return 0;
+        }
         if (!checkpoint.exists() || !part.exists() || part.length() <= 0L) {
             return 0;
         }
@@ -1937,6 +2079,10 @@ final class DownloadEngine {
     }
 
     private void saveHlsCheckpoint(File checkpoint, HlsPlaylist playlist, int completed) throws IOException {
+        if (!playlist.resumable) {
+            checkpoint.delete();
+            return;
+        }
         Properties props = new Properties();
         props.setProperty("manifestUrl", playlist.manifestUrl);
         props.setProperty("segmentCount", String.valueOf(playlist.segments.size()));
@@ -1985,10 +2131,12 @@ final class DownloadEngine {
     private static final class HlsPlaylist {
         final String manifestUrl;
         final List<HlsSegment> segments;
+        final boolean resumable;
 
-        HlsPlaylist(String manifestUrl, List<HlsSegment> segments) {
+        HlsPlaylist(String manifestUrl, List<HlsSegment> segments, boolean resumable) {
             this.manifestUrl = manifestUrl;
             this.segments = segments;
+            this.resumable = resumable;
         }
     }
 }

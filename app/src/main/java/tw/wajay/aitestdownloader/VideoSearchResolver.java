@@ -78,19 +78,29 @@ final class VideoSearchResolver {
         if (Pattern.compile("https?://", Pattern.CASE_INSENSITIVE).matcher(text).find()) {
             return false;
         }
-        if (!extractJavCode(text).isEmpty()) {
+        String searchable = filenameStem(text);
+        if (!extractJavCode(searchable).isEmpty()) {
             return true;
         }
-        if (containsCjkKanaHangul(text) && text.length() >= 2) {
+        if (containsCjkKanaHangul(searchable) && searchable.length() >= 2) {
             return true;
         }
         int alnum = 0;
-        for (int i = 0; i < text.length(); i++) {
-            if (Character.isLetterOrDigit(text.charAt(i))) {
+        for (int i = 0; i < searchable.length(); i++) {
+            if (Character.isLetterOrDigit(searchable.charAt(i))) {
                 alnum++;
             }
         }
-        return alnum >= 3 && Pattern.compile("[A-Za-z]").matcher(text).find();
+        return alnum >= 3 && Pattern.compile("[A-Za-z]").matcher(searchable).find();
+    }
+
+    private static String filenameStem(String value) {
+        String text = value == null ? "" : value.trim();
+        int slash = Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\'));
+        if (slash >= 0 && slash + 1 < text.length()) {
+            text = text.substring(slash + 1);
+        }
+        return text.replaceFirst("(?i)\\.(?:mp4|m4v|webm|mkv|avi|mov|ts|m3u8|mpd|part)$", "").trim();
     }
 
     static List<Result> search(String query) throws IOException {

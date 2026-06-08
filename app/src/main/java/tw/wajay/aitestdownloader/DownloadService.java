@@ -247,8 +247,13 @@ public final class DownloadService extends Service {
 
         @Override
         public void onResolved(String sourceSite, String targetUrl, List<String> candidates, List<String> candidateLabels) {
+            onResolved(sourceSite, targetUrl, candidates, candidateLabels, java.util.Collections.emptyList());
+        }
+
+        @Override
+        public void onResolved(String sourceSite, String targetUrl, List<String> candidates, List<String> candidateLabels, List<String> candidateReferers) {
             int candidateCount = candidates == null ? 0 : candidates.size();
-            taskStore.resolved(taskId, sourceSite, targetUrl, candidates, candidateLabels);
+            taskStore.resolved(taskId, sourceSite, targetUrl, candidates, candidateLabels, candidateReferers);
             eventLog.write("resolved", taskId, sourceSite + " candidates=" + candidateCount + " primary=" + targetUrl + " all=" + joinCandidates(candidates));
         }
 

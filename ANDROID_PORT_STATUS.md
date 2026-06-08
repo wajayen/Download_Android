@@ -7,7 +7,7 @@ This Android app is a native port track for the desktop downloader in `downloade
 - APK build pipeline with local JDK, Android SDK, and Gradle.
 - Native Android UI for entering or sharing a URL.
 - Android-friendly main screen with a left hamburger menu, right overflow settings menu, and download queue centered as the primary content.
-- Main UI now uses a calm Japanese-inspired Android layout with pale surfaces, subtle borders, queue-first structure, and large touch-friendly controls.
+- Main UI now uses a calm Japanese-inspired Android layout with pale surfaces, subtle borders, the new-download controls above the download queue, and large touch-friendly controls.
 - Android app name and launcher icon match the Windows version: `下載者` with the Taiwan symbol icon.
 - Batch URL parsing from pasted/shared text; multiple http(s) links are queued together.
 - Foreground download service and notification progress for long-running downloads.
@@ -26,14 +26,20 @@ This Android app is a native port track for the desktop downloader in `downloade
 - HTTP requests share an app-wide persistent cookie jar so cookies captured during page resolution can be reused by later manifest and media requests after service or app restarts.
 - Android input accepts pasted browser request context: `Cookie:` and `Referer:` headers are parsed, persisted, and applied to queued downloads.
 - Android input accepts additional safe pasted request headers such as `User-Agent`, `Accept`, `Accept-Language`, `Authorization`, and fetch metadata headers.
+- Android input now preserves more safe browser request headers from copied requests, including `Cache-Control`, `DNT`, `Pragma`, `Priority`, `Sec-Fetch-User`, and safe `Accept-Encoding: identity`.
+- Android HTTP requests now default to `Accept-Encoding: identity` so HTML, HLS, DASH, and segment reads do not accidentally parse compressed bytes as plain text/media.
+- Android text response parsing now honors `Content-Type` charset values for pages, HLS/DASH manifests, and Anime1 API responses, falling back to UTF-8.
 - Android input supports browser `Copy as cURL` text and avoids queuing URLs found only inside pasted header values such as Referer.
 - Android input now accepts video titles and JAV-style codes as search queries, searches supported video sites in the background, and queues the first resolvable result for download.
+- Android search query detection now treats pasted media filenames by their stem, matching the desktop behavior for inputs such as `title.mp4`, `code.m3u8`, or local-looking paths.
 - Android video search now seeds supported site-search URLs before falling back to search-engine results, improving reliability for MovieFFM, Gimy/Xiaoya/MacCMS-like sites, and common JAV site clusters.
 - Android video search detects JAV-style codes and prioritizes JAV direct-code URLs plus JAV site-search candidates before general video sites.
 - Android resolver now recognizes more MacCMS-like search result paths such as `/voddetail/`, `/voddetail2/`, and `/title/`, plus additional Ikanbot/YFSP/Olevod/777TV search entry points.
 - Android video search now fetches the first supported site-search pages, extracts ranked detail/play-page links, and keeps the search page itself as a fallback candidate.
 - Android video search now preserves each extracted result's search-page Referer while resolving and downloading, improving compatibility with sites that validate navigation origin.
 - Android video search now keeps alternate search results in the resolved source candidate list after one result succeeds, so the UI can retry a different search result instead of only the current page's media sources.
+- Android source candidate retry now persists per-candidate Referer values and restores them when retrying alternate search results from the UI.
+- Pasted or shared Referer values are now applied during page resolution, not only during the final media request.
 - Parser registry foundation through `MediaResolver`.
 - First site-aware candidate extraction and ordering for MovieFFM, Gimy, and XiaoyaKankan style pages.
 - Recursive player/iframe/API page resolution up to four levels deep.
@@ -74,7 +80,9 @@ This Android app is a native port track for the desktop downloader in `downloade
 - HLS master playlist variant selection now reads `RESOLUTION`, `NAME`, and `CODECS`, preferring higher resolution before bandwidth and reporting the selected variant details.
 - HLS AES-128 segment decryption with explicit IV or media sequence IV fallback.
 - HLS segment retry and empty-segment validation.
+- HLS init maps now share the same retry and empty-response validation used by media segment downloads.
 - HLS checkpoint resume for matching manifest URL and segment count.
+- HLS checkpoint resume is now limited to VOD or `#EXT-X-ENDLIST` playlists so live/event manifests do not resume against stale segment windows.
 - HLS `#EXT-X-MAP` init segment handling, including byte-range requests.
 - HLS media segment `#EXT-X-BYTERANGE` handling for byte-range based playlists and single-file segment layouts.
 - HLS byte-range segment parsing now preserves implicit offsets when `#EXT-X-BYTERANGE` omits `@offset`, matching the playlist sequence rules.
@@ -84,6 +92,9 @@ This Android app is a native port track for the desktop downloader in `downloade
 - DASH `SegmentBase` support for single-file MP4 representations with `Initialization` byte ranges.
 - DASH representation selection now reads representation or adaptation `width`, `height`, and `codecs`, preferring higher resolution before bandwidth and reporting the selected representation details.
 - DASH parsing now honors MPD, Period, AdaptationSet, and Representation `BaseURL` hierarchy and skips audio-only AdaptationSet or Representation candidates before selecting the video stream.
+- DASH representation selection now also skips text/subtitle/image tracks and explicitly prefers video-like representations by MIME/content type, codecs, or dimensions.
+- DASH `SegmentTimeline` parsing now expands negative repeat counts such as `S r="-1"` up to the next timeline timestamp or period duration.
+- DASH init and media segment downloads now retry transient failures and reject empty responses before writing them to the output.
 - DASH downloads write init + media segments into `.mp4` and keep a checkpoint for resumable segment progress.
 
 ## Not Yet Ported From Desktop
