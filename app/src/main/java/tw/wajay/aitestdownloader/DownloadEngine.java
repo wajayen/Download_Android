@@ -777,6 +777,9 @@ final class DownloadEngine {
             connection.setRequestProperty("Range", "bytes=" + existing + "-");
         }
         int code = connection.getResponseCode();
+        if (code >= HttpURLConnection.HTTP_BAD_REQUEST) {
+            throw httpStatusException(connection, rawUrl, code);
+        }
         boolean canResume = existing > 0L && code == HttpURLConnection.HTTP_PARTIAL;
         if (existing > 0L && !canResume) {
             existing = 0L;
@@ -963,6 +966,10 @@ final class DownloadEngine {
 
     private String readText(String rawUrl, String refererUrl) throws IOException {
         HttpURLConnection connection = open(rawUrl, refererUrl);
+        int code = connection.getResponseCode();
+        if (code >= HttpURLConnection.HTTP_BAD_REQUEST) {
+            throw httpStatusException(connection, rawUrl, code);
+        }
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), charsetFromContentType(connection.getContentType())))) {
             StringBuilder builder = new StringBuilder();
             String line;
@@ -1060,6 +1067,10 @@ final class DownloadEngine {
         try (java.io.OutputStream output = connection.getOutputStream()) {
             output.write(body.getBytes("UTF-8"));
         }
+        int code = connection.getResponseCode();
+        if (code >= HttpURLConnection.HTTP_BAD_REQUEST) {
+            throw httpStatusException(connection, "https://v.anime1.me/api", code);
+        }
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), charsetFromContentType(connection.getContentType())))) {
             StringBuilder builder = new StringBuilder();
             String line;
@@ -1120,6 +1131,57 @@ final class DownloadEngine {
             return Charset.forName(matcher.group(1).trim());
         } catch (Exception ignored) {
             return StandardCharsets.UTF_8;
+        }
+    }
+
+    private IOException httpStatusException(HttpURLConnection connection, String rawUrl, int code) {
+        String message = "HTTP " + code + " for " + shortUrlForError(rawUrl);
+        String snippet = readErrorSnippet(connection);
+        if (!snippet.isEmpty()) {
+            message += ": " + snippet;
+        }
+        return new IOException(message);
+    }
+
+    private String readErrorSnippet(HttpURLConnection connection) {
+        InputStream errorStream = connection.getErrorStream();
+        if (errorStream == null) {
+            return "";
+        }
+        try (InputStream input = new BufferedInputStream(errorStream)) {
+            byte[] buffer = new byte[1024];
+            java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+            int read;
+            int remaining = 4096;
+            while (remaining > 0 && (read = input.read(buffer, 0, Math.min(buffer.length, remaining))) != -1) {
+                output.write(buffer, 0, read);
+                remaining -= read;
+            }
+            String text = new String(output.toByteArray(), charsetFromContentType(connection.getContentType()));
+            text = text.replaceAll("\\s+", " ").trim();
+            return text.length() > 160 ? text.substring(0, 160) : text;
+        } catch (IOException ignored) {
+            return "";
+        }
+    }
+
+    private String shortUrlForError(String rawUrl) {
+        try {
+            URL url = new URL(rawUrl);
+            StringBuilder builder = new StringBuilder();
+            builder.append(url.getProtocol()).append("://").append(url.getHost());
+            String path = url.getPath();
+            if (path != null && !path.isEmpty()) {
+                builder.append(path);
+            }
+            if (url.getQuery() != null && !url.getQuery().isEmpty()) {
+                builder.append("?");
+            }
+            String value = builder.toString();
+            return value.length() > 140 ? value.substring(0, 140) : value;
+        } catch (MalformedURLException ignored) {
+            String value = rawUrl == null ? "" : rawUrl;
+            return value.length() > 140 ? value.substring(0, 140) : value;
         }
     }
 
@@ -1692,6 +1754,28 @@ final class DownloadEngine {
         throw last == null ? new IOException(emptyMessage) : last;
     }
 
+    private byte[] readHlsKeyWithRetry(HlsKey key, String refererUrl) throws IOException {
+        IOException last = null;
+        for (int attempt = 1; attempt <= SEGMENT_RETRY_LIMIT; attempt++) {
+            try {
+                byte[] data = readBytes(key.uri, null, refererUrl);
+                if (data.length == 0) {
+                    throw new IOException("empty HLS key");
+                }
+                if (data.length != 16) {
+                    throw new IOException(context.getString(R.string.error_invalid_hls_key_length, data.length));
+                }
+                return data;
+            } catch (IOException error) {
+                last = error;
+                if (cancelled.get()) {
+                    throw error;
+                }
+            }
+        }
+        throw last == null ? new IOException("HLS key failed") : last;
+    }
+
     private byte[] decryptIfNeeded(HlsSegment segment, byte[] data, String refererUrl) throws IOException {
         HlsKey key = segment.key;
         if (key == null || key.method == null || "NONE".equalsIgnoreCase(key.method)) {
@@ -1704,10 +1788,7 @@ final class DownloadEngine {
             throw new IOException(context.getString(R.string.error_missing_hls_key_uri));
         }
         if (key.bytes == null) {
-            key.bytes = readBytes(key.uri, null, refererUrl);
-        }
-        if (key.bytes.length != 16) {
-            throw new IOException(context.getString(R.string.error_invalid_hls_key_length, key.bytes.length));
+            key.bytes = readHlsKeyWithRetry(key, refererUrl);
         }
         byte[] iv = key.iv == null ? ivFromSequence(segment.sequence) : key.iv;
         try {
@@ -1729,11 +1810,23 @@ final class DownloadEngine {
 
     private byte[] readBytes(String rawUrl, String byteRange, String refererUrl) throws IOException {
         HttpURLConnection connection = open(rawUrl, refererUrl);
+        boolean requiresPartial = false;
         if (byteRange != null && !byteRange.isEmpty()) {
             String rangeHeader = hlsByteRangeToHttpRange(byteRange);
             if (rangeHeader != null) {
                 connection.setRequestProperty("Range", rangeHeader);
+                requiresPartial = true;
             }
+        }
+        int code = connection.getResponseCode();
+        if (code >= HttpURLConnection.HTTP_BAD_REQUEST) {
+            throw httpStatusException(connection, rawUrl, code);
+        }
+        if (requiresPartial && code != HttpURLConnection.HTTP_PARTIAL) {
+            throw new IOException("HTTP " + code + " did not honor byte range for " + shortUrlForError(rawUrl));
+        }
+        if (code < HttpURLConnection.HTTP_OK || code >= HttpURLConnection.HTTP_MULT_CHOICE) {
+            throw httpStatusException(connection, rawUrl, code);
         }
         try (InputStream input = new BufferedInputStream(connection.getInputStream())) {
             byte[] buffer = new byte[128 * 1024];

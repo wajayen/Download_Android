@@ -9,6 +9,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -32,6 +34,9 @@ final class VideoSearchResolver {
     private static final Pattern LINK = Pattern.compile(
             "<a[^>]+href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern DATA_LINK = Pattern.compile(
+            "\\b(?:data-url|data-href|data-src|data-play|data-link|data-video|data-clipboard-text)=[\"']([^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE);
 
     private VideoSearchResolver() {
     }
@@ -175,8 +180,12 @@ final class VideoSearchResolver {
                 {"18JAV", "https://18jav.tv/search/%s"},
                 {"AVBebe", "https://avbebe.com/search/%s"},
                 {"AVJoy", "https://avjoy.me/search/videos?search_query=%s"},
+                {"85xVideo", "https://85xvideo.com/search/%s"},
+                {"TinyAVideo", "https://tinyavideo.com/search/%s"},
+                {"GoodAV17", "https://goodav17.com/search/%s"},
                 {"HoHoJ", "https://hohoj.tv/search/%s"},
-                {"GGJAV", "https://ggjav.com/search/%s"}
+                {"GGJAV", "https://ggjav.com/search/%s"},
+                {"TKTube", "https://tktube.com/search/%s"}
         };
     }
 
@@ -193,8 +202,12 @@ final class VideoSearchResolver {
                 {"18JAV", "https://18jav.tv/search/%s"},
                 {"AVBebe", "https://avbebe.com/search/%s"},
                 {"AVJoy", "https://avjoy.me/search/videos?search_query=%s"},
+                {"85xVideo", "https://85xvideo.com/search/%s"},
+                {"TinyAVideo", "https://tinyavideo.com/search/%s"},
+                {"GoodAV17", "https://goodav17.com/search/%s"},
                 {"HoHoJ", "https://hohoj.tv/search/%s"},
                 {"GGJAV", "https://ggjav.com/search/%s"},
+                {"TKTube", "https://tktube.com/search/%s"},
                 {"MovieFFM", "https://www.movieffm.net/?s=%s"},
                 {"XiaoyaKankan", "https://tw.xiaoyakankan.com/vod/search.html?wd=%s"},
                 {"Gimy", "https://gimy.ai/search.html?wd=%s"},
@@ -205,17 +218,25 @@ final class VideoSearchResolver {
     private static void addJavDirectResults(String javCode, Set<String> seen, List<Result> out) {
         String slug = javCode.toLowerCase(Locale.US).replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
         String compact = javCode.toLowerCase(Locale.US).replaceAll("[^a-z0-9]+", "");
+        String upperSlug = slug.toUpperCase(Locale.US);
         String[][] direct = new String[][]{
                 {"MissAV", "https://missav.ws/" + slug},
+                {"MissAV", "https://missav.ai/" + slug},
+                {"MissAV", "https://missav.ws/dm13/en/" + slug},
                 {"Jable", "https://jable.tv/videos/" + slug + "/"},
+                {"Jable", "https://jable.tv/videos/" + compact + "/"},
                 {"NJAV", "https://www.njav.com/tw/xvideos/" + slug},
                 {"NJAV", "https://www.njav.com/tw/xvideos/" + slug + "-uncensored-leak"},
+                {"NJAVTV", "https://njavtv.com/video/" + slug + "/"},
                 {"SupJAV", "https://supjav.com/" + compact + ".html"},
+                {"AVBebe", "https://avbebe.com/video/" + upperSlug},
+                {"AVJoy", "https://avjoy.me/video/" + slug},
                 {"JavDock", "https://www.javdock.com/video/" + slug},
                 {"BestJavPorn", "https://bestjavporn.com/video/" + slug + "/"},
                 {"JavFilms", "https://javfilms.com/video/" + slug + "/"},
                 {"18JAV", "https://18jav.tv/videos/" + slug + "/"},
-                {"HoHoJ", "https://hohoj.tv/" + slug + "/"}
+                {"HoHoJ", "https://hohoj.tv/" + slug + "/"},
+                {"GGJAV", "https://ggjav.com/video/" + slug + "/"}
         };
         for (String[] item : direct) {
             if (out.size() >= MAX_RESULTS) {
@@ -233,7 +254,8 @@ final class VideoSearchResolver {
                 "movieffm.net", "gimy", "xiaoyakankan.com", "dramasq", "olevod.com",
                 "3kor.com", "99itv.net", "nnyy.in", "missav", "jable.tv", "njav",
                 "supjav.com", "bestjavporn.com", "javdock.com", "javfilms.com",
-                "18jav.tv", "avbebe.com", "avjoy.me", "hohoj.tv", "ggjav.com"
+                "18jav.tv", "85xvideo.com", "avbebe.com", "avjoy.me", "tinyavideo.com",
+                "goodav17.com", "hohoj.tv", "ggjav.com", "tktube.com"
         };
         for (String site : sites) {
             queries.add(query + " site:" + site);
@@ -285,6 +307,18 @@ final class VideoSearchResolver {
             }
             ranked.add(new RankedResult(url, sourceLabel + ": " + title, score));
         }
+        Matcher dataMatcher = DATA_LINK.matcher(html == null ? "" : html);
+        while (dataMatcher.find() && ranked.size() < SITE_SEARCH_LINK_LIMIT * 4) {
+            String url = normalizeResultUrl(dataMatcher.group(1), baseUrl);
+            if (url.isEmpty() || !localSeen.add(url) || !looksLikeSearchResultPath(url)) {
+                continue;
+            }
+            int score = resultMatchScore("", url, query);
+            if (score < 0) {
+                continue;
+            }
+            ranked.add(new RankedResult(url, sourceLabel + ": embedded link", score));
+        }
         Collections.sort(ranked, new Comparator<RankedResult>() {
             @Override
             public int compare(RankedResult left, RankedResult right) {
@@ -316,14 +350,7 @@ final class VideoSearchResolver {
         if (value.startsWith("//")) {
             value = "https:" + value;
         }
-        try {
-            Uri uri = Uri.parse(value);
-            String encoded = uri.getQueryParameter("uddg");
-            if (encoded != null && !encoded.trim().isEmpty()) {
-                value = URLDecoder.decode(encoded, "UTF-8");
-            }
-        } catch (Exception ignored) {
-        }
+        value = unwrapRedirectUrl(value);
         return value.startsWith("http://") || value.startsWith("https://") ? value : "";
     }
 
@@ -337,10 +364,47 @@ final class VideoSearchResolver {
             return "";
         }
         try {
-            return new URL(new URL(baseUrl), value).toString();
+            return normalizeResultUrl(new URL(new URL(baseUrl), value).toString());
         } catch (Exception ignored) {
             return normalizeResultUrl(value);
         }
+    }
+
+    private static String unwrapRedirectUrl(String value) {
+        String current = value == null ? "" : value.trim();
+        for (int depth = 0; depth < 3; depth++) {
+            try {
+                Uri uri = Uri.parse(current);
+                String encoded = firstQueryParameter(uri, new String[]{"uddg", "url", "u", "target", "to", "dest", "destination", "redirect", "q"});
+                if (encoded == null || encoded.trim().isEmpty()) {
+                    return current;
+                }
+                String decoded = URLDecoder.decode(encoded, "UTF-8").trim();
+                if (decoded.startsWith("//")) {
+                    decoded = "https:" + decoded;
+                }
+                if (!decoded.startsWith("http://") && !decoded.startsWith("https://")) {
+                    return current;
+                }
+                if (decoded.equals(current)) {
+                    return current;
+                }
+                current = decoded;
+            } catch (Exception ignored) {
+                return current;
+            }
+        }
+        return current;
+    }
+
+    private static String firstQueryParameter(Uri uri, String[] keys) {
+        for (String key : keys) {
+            String value = uri.getQueryParameter(key);
+            if (value != null && !value.trim().isEmpty()) {
+                return value;
+            }
+        }
+        return "";
     }
 
     private static boolean isSupportedCandidate(String url) {
@@ -348,8 +412,7 @@ final class VideoSearchResolver {
         if (!"generic".equals(site)) {
             return true;
         }
-        String lowered = url == null ? "" : url.toLowerCase(Locale.US);
-        return lowered.contains(".m3u8") || lowered.contains(".mp4") || lowered.contains(".mpd");
+        return hasSupportedMediaExtension(url);
     }
 
     private static String fetch(String rawUrl) throws IOException {
@@ -363,6 +426,8 @@ final class VideoSearchResolver {
         connection.setInstanceFollowRedirects(true);
         connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36");
         connection.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        connection.setRequestProperty("Accept-Language", "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6");
+        connection.setRequestProperty("Accept-Encoding", "identity");
         int code = connection.getResponseCode();
         if (code >= 400) {
             throw new IOException("search HTTP " + code);
@@ -374,15 +439,30 @@ final class VideoSearchResolver {
             while ((read = input.read(buffer)) != -1) {
                 output.write(buffer, 0, read);
             }
-            return output.toString("UTF-8");
+            return new String(output.toByteArray(), charsetFromContentType(connection.getContentType()));
         } finally {
             connection.disconnect();
         }
     }
 
+    private static Charset charsetFromContentType(String contentType) {
+        if (contentType == null || contentType.trim().isEmpty()) {
+            return StandardCharsets.UTF_8;
+        }
+        Matcher matcher = Pattern.compile("charset\\s*=\\s*['\"]?([^;\\s'\"]+)", Pattern.CASE_INSENSITIVE).matcher(contentType);
+        if (!matcher.find()) {
+            return StandardCharsets.UTF_8;
+        }
+        try {
+            return Charset.forName(matcher.group(1).trim());
+        } catch (Exception ignored) {
+            return StandardCharsets.UTF_8;
+        }
+    }
+
     private static boolean looksLikeSearchResultPath(String rawUrl) {
         String url = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
-        if (url.contains(".m3u8") || url.contains(".mp4") || url.contains(".mpd")) {
+        if (hasSupportedMediaExtension(url)) {
             return true;
         }
         String[] markers = new String[]{
@@ -399,6 +479,15 @@ final class VideoSearchResolver {
             }
         }
         return false;
+    }
+
+    private static boolean hasSupportedMediaExtension(String rawUrl) {
+        String lowered = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        return lowered.contains(".m3u8")
+                || lowered.contains(".mp4")
+                || lowered.contains(".mpd")
+                || lowered.contains(".webm")
+                || lowered.contains(".m4v");
     }
 
     private static int resultMatchScore(String title, String url, String query) {

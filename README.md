@@ -2,7 +2,7 @@
 
 Android port of the Windows downloader.
 
-Current Android version: `0.70.0` (`versionCode 70`).
+Current Android version: `0.80.0` (`versionCode 80`).
 
 ## Build
 

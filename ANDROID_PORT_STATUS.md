@@ -10,6 +10,8 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Main UI now uses a calm Japanese-inspired Android layout with pale surfaces, subtle borders, the new-download controls above the download queue, and large touch-friendly controls.
 - Android app name and launcher icon match the Windows version: `下載者` with the Taiwan symbol icon.
 - Batch URL parsing from pasted/shared text; multiple http(s) links are queued together.
+- Download file names now receive desktop-style safety cleanup for control characters, invalid path characters, trailing dots/spaces, and Windows reserved device names before queueing or exporting.
+- Download file names now infer desktop-style names from URL query hints such as `response-content-disposition`, `filename`, `file`, and `name` before falling back to the URL path.
 - Foreground download service and notification progress for long-running downloads.
 - Persistent JSON task queue through SharedPreferences.
 - Bounded multi-task queue execution with up to two active downloads.
@@ -29,13 +31,20 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Android input now preserves more safe browser request headers from copied requests, including `Cache-Control`, `DNT`, `Pragma`, `Priority`, `Sec-Fetch-User`, and safe `Accept-Encoding: identity`.
 - Android HTTP requests now default to `Accept-Encoding: identity` so HTML, HLS, DASH, and segment reads do not accidentally parse compressed bytes as plain text/media.
 - Android text response parsing now honors `Content-Type` charset values for pages, HLS/DASH manifests, and Anime1 API responses, falling back to UTF-8.
+- Android HTTP, page, API, HLS, and DASH reads now report clear HTTP status failures and reject byte-range segment responses that are not returned as `206 Partial Content`.
 - Android input supports browser `Copy as cURL` text and avoids queuing URLs found only inside pasted header values such as Referer.
 - Android input now accepts video titles and JAV-style codes as search queries, searches supported video sites in the background, and queues the first resolvable result for download.
 - Android search query detection now treats pasted media filenames by their stem, matching the desktop behavior for inputs such as `title.mp4`, `code.m3u8`, or local-looking paths.
 - Android video search now seeds supported site-search URLs before falling back to search-engine results, improving reliability for MovieFFM, Gimy/Xiaoya/MacCMS-like sites, and common JAV site clusters.
 - Android video search detects JAV-style codes and prioritizes JAV direct-code URLs plus JAV site-search candidates before general video sites.
+- Android JAV code search now seeds more direct detail-page variants for MissAV, Jable, NJAVTV, AVBebe, AVJoy, and GGJAV before falling back to site-search pages.
+- Android JAV/adult video search now adds site-search coverage for 85xVideo, TinyAVideo, GoodAV17, and TKTube, matching sites already recognized by the Android resolver.
 - Android resolver now recognizes more MacCMS-like search result paths such as `/voddetail/`, `/voddetail2/`, and `/title/`, plus additional Ikanbot/YFSP/Olevod/777TV search entry points.
 - Android video search now fetches the first supported site-search pages, extracts ranked detail/play-page links, and keeps the search page itself as a fallback candidate.
+- Android video search now also extracts ranked site-search candidates from embedded `data-url`, `data-href`, `data-src`, `data-play`, `data-link`, and related attributes.
+- Android video search page fetching now requests identity encoding, sends Traditional Chinese/Japanese-friendly language preferences, and honors `Content-Type` charset values before ranking results.
+- Android video search now unwraps common redirect query parameters such as `uddg`, `url`, `u`, `target`, `to`, `dest`, and `redirect` before filtering supported candidates.
+- Android video search now accepts generic direct `.webm` and `.m4v` media candidates, matching the Android download core's direct-media support.
 - Android video search now preserves each extracted result's search-page Referer while resolving and downloading, improving compatibility with sites that validate navigation origin.
 - Android video search now keeps alternate search results in the resolved source candidate list after one result succeeds, so the UI can retry a different search result instead of only the current page's media sources.
 - Android source candidate retry now persists per-candidate Referer values and restores them when retrying alternate search results from the UI.
@@ -79,6 +88,7 @@ This Android app is a native port track for the desktop downloader in `downloade
 - HLS master playlist variant selection by bandwidth.
 - HLS master playlist variant selection now reads `RESOLUTION`, `NAME`, and `CODECS`, preferring higher resolution before bandwidth and reporting the selected variant details.
 - HLS AES-128 segment decryption with explicit IV or media sequence IV fallback.
+- HLS AES-128 key downloads now retry transient failures and reject empty or invalid-length key responses before decrypting segments.
 - HLS segment retry and empty-segment validation.
 - HLS init maps now share the same retry and empty-response validation used by media segment downloads.
 - HLS checkpoint resume for matching manifest URL and segment count.
