@@ -154,4 +154,6 @@
     <string name="engine_muxed_dash_audio">已合并 DASH 视频与音频</string>
     <string name="engine_mux_dash_audio_failed_keep_video">DASH 音频合并失败；保留纯视频输出：%1$s</string>
     <string name="engine_media_duration_validated">已验证媒体时长</string>
+    <string name="action_about">&#20851;&#20110;</string>
+    <string name="about_message">%1$s&#10;&#29256;&#26412;&#65306;%2$s&#10;&#32534;&#35793;&#26085;&#26399;&#65306;%3$s</string>
 </resources>

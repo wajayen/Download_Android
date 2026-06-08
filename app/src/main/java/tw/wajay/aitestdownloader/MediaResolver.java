@@ -47,10 +47,10 @@ final class MediaResolver {
             "(?<!:)//[^\\s\"'<>\\\\]+?\\.(?:m3u8|mp4|mpd|webm|m4v)(?:\\?[^\\s\"'<>\\\\]*)?",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern ATTR_MEDIA_URL = Pattern.compile(
-            "(?:src|href|file|url|play_url|playUrl|video|source|hlsUrl|hls_url|hls|m3u8|playlist|manifest_url|manifestUrl|stream_url|streamUrl|video_url|videoUrl|media_url|mediaUrl|dash_url|dashUrl|mpd|backupUrl|backup_url)\\s*[:=]\\s*[\"']([^\"']+?\\.(?:m3u8|mp4|mpd|webm|m4v)(?:\\?[^\"']*)?)[\"']",
+            "(?:src|href|file|url|play_url|playUrl|playurl|video|source|hlsUrl|hls_url|hls|m3u8|playlist|manifest_url|manifestUrl|stream_url|streamUrl|video_url|videoUrl|media_url|mediaUrl|dash_url|dashUrl|mpd|backupUrl|backup_url)\\s*[:=]\\s*[\"']([^\"']+?\\.(?:m3u8|mp4|mpd|webm|m4v)(?:\\?[^\"']*)?)[\"']",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern SCRIPT_MEDIA_ASSIGNMENT = Pattern.compile(
-            "(?:source|hlsUrl|hls_url|hls|m3u8|playlist|manifest_url|manifestUrl|stream_url|streamUrl|video_url|videoUrl|media_url|mediaUrl|dash_url|dashUrl|mpd|backupUrl|backup_url)\\s*[:=]\\s*[\"']((?:https?:)?//[^\"']+?\\.(?:m3u8|mp4|mpd|webm|m4v)(?:\\?[^\"']*)?)[\"']",
+            "(?:source|playurl|hlsUrl|hls_url|hls|m3u8|playlist|manifest_url|manifestUrl|stream_url|streamUrl|video_url|videoUrl|media_url|mediaUrl|dash_url|dashUrl|mpd|backupUrl|backup_url)\\s*[:=]\\s*[\"']((?:https?:)?//[^\"']+?\\.(?:m3u8|mp4|mpd|webm|m4v)(?:\\?[^\"']*)?)[\"']",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern JSON_ESCAPED_MEDIA_URL = Pattern.compile(
             "https?:\\\\/\\\\/[^\\s\"'<>]+?\\.(?:m3u8|mp4|mpd|webm|m4v)(?:\\?[^\\s\"'<>]*)?",
@@ -65,7 +65,7 @@ final class MediaResolver {
             "(?:var\\s+)?(player_data|player_aaaa|player)\\s*=\\s*\\{",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern SITE_PLAY_LINK = Pattern.compile(
-            "<a([^>]+)href=[\"']([^\"']*(?:/(?:vod)?play/|/vodplay/|/watch/|/video/|/videos/|/embed/|/amateurjav_content/|/eps/|/episode/|/vod/detail/|/voddetail/|/voddetail2/|/detail/|/title/|/index\\.php/vod/(?:play|detail)/|/dianying/|/dianshiju/|/zongyi/|/dongman/)[^\"']+)[\"']([^>]*)>(.*?)</a>",
+            "<a([^>]+)href=[\"']([^\"']*(?:/(?:vod)?play/|/vodplay/|/watch/|/video/|/videos/|/embed/|/amateurjav_content/|/eps/|/episode/|/vod/detail/|/voddetail/|/voddetail2/|/detail/|/title/|/drama/|/index\\.php/vod/(?:play|detail)/|/dianying/|/dianshiju/|/zongyi/|/dongman/)[^\"']+)[\"']([^>]*)>(.*?)</a>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern ANI_GAMER_EPISODE_LINK = Pattern.compile(
             "<a[^>]+href=[\"']([^\"']*(?:animeVideo\\.php\\?sn=\\d+|\\?sn=\\d+)[^\"']*)[\"'][^>]*>",
@@ -100,14 +100,35 @@ final class MediaResolver {
     private static final Pattern MOVIEFFM_IFRAME_JSON_URL = Pattern.compile(
             "\"url\"\\s*:\\s*\"((?:https?:)?//[^\"]+)\"\\s*,\\s*\"type\"\\s*:\\s*\"iframe\"",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern MOVIEFFM_DRAMA_DETAIL_URL = Pattern.compile(
+            "href=[\"'](https?://www\\.movieffm\\.net/drama/\\d+/)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern MOVIEFFM_EPISODE_JSON = Pattern.compile(
+            "\"name\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"url\"\\s*:\\s*\"([^\"]+)\"",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern MOVIEFFM_EPISODE_ABSOLUTE = Pattern.compile(
+            "https://www\\.movieffm\\.net/[^\"'<>\\s]+",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern XIAOYA_PLAY_URL = Pattern.compile(
             "(?:href|data-url|data-href|data-play|url|play_url|playUrl)\\s*[:=]\\s*[\"']([^\"']*/vod/play/id/[^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern XIAOYA_PP_START = Pattern.compile(
             "var\\s+pp\\s*=\\s*\\{",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern GGJAV_EMBED_URL = Pattern.compile(
+            "((?:https?:)?//(?:www\\.)?ggjav\\.com/main/embed\\?[^\\s\"'<>\\\\]+|/main/embed\\?[^\\s\"'<>\\\\]+)",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern GGJAV_OBFUSCATED_LINKS = Pattern.compile(
+            "\\bvar\\s+l\\s*=\\s*[\"']([^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern GIMY_PARSE_API_URL = Pattern.compile(
+            "((?:https?:)?//[^\\s\"'<>\\\\]+?parse\\.php\\?[^\\s\"'<>\\\\]+|(?:/[^\\s\"'<>\\\\]*)?parse\\.php\\?[^\\s\"'<>\\\\]+)",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern GIMY_PLAY_PAGE_ID = Pattern.compile(
+            "/(?:(?:vod)?play|watch|eps)/([A-Za-z0-9]+)-\\d+(?:-\\d+)?\\.html|/video/([A-Za-z0-9]+)-\\d+\\.html",
+            Pattern.CASE_INSENSITIVE);
     private static final String[] PLAYER_KEYS = new String[]{
-            "url", "src", "play_url", "playUrl", "urls", "backup", "backup_urls",
+            "url", "src", "play_url", "playUrl", "playurl", "urls", "backup", "backup_urls",
             "m3u8_urls", "playlist", "sources", "file", "video", "videos",
             "qualities", "streams", "stream_url", "streamUrl", "manifest_url",
             "manifestUrl", "hlsUrl", "hls_url", "dashUrl", "dash_url",
@@ -124,7 +145,11 @@ final class MediaResolver {
         addPlayerObjectCandidates(candidates, labels, pageText, pageUrl);
         addGenericCandidates(candidates, labels, pageText, pageUrl);
         addIframeCandidates(candidates, labels, pageText, pageUrl);
+        addGimyParseCandidates(candidates, labels, pageText, pageUrl, site);
+        addGimyDetailCandidates(candidates, labels, pageUrl, site);
+        addGgJavEmbedCandidates(candidates, labels, pageText, pageUrl);
         addMovieFfmExternalCandidates(candidates, labels, pageText, pageUrl, site);
+        addMovieFfmEpisodeCandidates(candidates, labels, pageText, pageUrl, site);
         addXiaoyaPlayCandidates(candidates, labels, pageText, pageUrl, site);
         addXiaoyaPpCandidates(candidates, labels, pageText, pageUrl, site);
         addSitePlayLinkCandidates(candidates, labels, pageText, pageUrl, site);
@@ -155,6 +180,15 @@ final class MediaResolver {
         }
         if (lowered.contains("xiaoyakankan")) {
             return "xiaoyakankan";
+        }
+        if (lowered.contains("mixdrop.ag") || lowered.contains("m1xdrop.click")) {
+            return "mixdrop";
+        }
+        if (isDoodFamilyHost(lowered)) {
+            return "dood";
+        }
+        if (lowered.contains("evoload.io")) {
+            return "evoload";
         }
         if (lowered.contains("nnyy.in")) {
             return "nnyy";
@@ -237,6 +271,125 @@ final class MediaResolver {
         }
     }
 
+    private static void addGgJavEmbedCandidates(List<String> out, Map<String, String> labels, String pageText, String pageUrl) {
+        String site = sourceSite(pageUrl);
+        if (!("goodav17".equals(site) || "hohoj".equals(site) || "ggjav".equals(site))) {
+            return;
+        }
+        Set<String> seen = new LinkedHashSet<>(out);
+        String text = htmlDecoded(pageText);
+        Matcher matcher = GGJAV_EMBED_URL.matcher(text);
+        while (matcher.find()) {
+            addGgJavMediaCandidates(out, labels, seen, resolveUrl(pageUrl, matcher.group(1)), "GGJAV embed media");
+        }
+        Matcher obfuscatedMatcher = GGJAV_OBFUSCATED_LINKS.matcher(text);
+        while (obfuscatedMatcher.find()) {
+            for (String value : decodeGgJavObfuscatedLinks(obfuscatedMatcher.group(1))) {
+                addGgJavMediaCandidates(out, labels, seen, resolveUrl(pageUrl, value), "GGJAV player links");
+            }
+        }
+    }
+
+    private static void addGgJavMediaCandidates(List<String> out, Map<String, String> labels, Set<String> seen, String rawUrl, String label) {
+        if (rawUrl == null || rawUrl.trim().isEmpty()) {
+            return;
+        }
+        String decoded = decodeGgJavEmbedMediaUrl(rawUrl);
+        List<String> seeds = new ArrayList<>();
+        seeds.add(rawUrl);
+        if (decoded != null && !decoded.trim().isEmpty()) {
+            seeds.add(decoded);
+        }
+        for (String seed : seeds) {
+            for (String candidate : expandGgJavMediaVariants(seed)) {
+                if (candidate != null && isMediaUrl(candidate) && seen.add(candidate)) {
+                    out.add(candidate);
+                    putLabel(labels, candidate, label);
+                }
+            }
+        }
+    }
+
+    private static void addGimyParseCandidates(List<String> out, Map<String, String> labels, String pageText, String pageUrl, String site) {
+        if (!"gimy".equals(site)) {
+            return;
+        }
+        Set<String> seen = new LinkedHashSet<>(out);
+        String text = htmlDecoded(pageText);
+        Matcher parseMatcher = GIMY_PARSE_API_URL.matcher(text);
+        while (parseMatcher.find()) {
+            String candidate = resolveUrl(pageUrl, parseMatcher.group(1));
+            if (candidate != null && looksLikeMediaOrPlayer(candidate) && seen.add(candidate)) {
+                out.add(candidate);
+                putLabel(labels, candidate, "Gimy parse API");
+            }
+        }
+        Matcher iframeMatcher = IFRAME_URL.matcher(text);
+        while (iframeMatcher.find()) {
+            addGimyIframeDerivedCandidates(out, labels, seen, resolveUrl(pageUrl, iframeMatcher.group(1)));
+        }
+        List<String> existing = new ArrayList<>(out);
+        for (String candidate : existing) {
+            if ("gimy".equals(sourceSite(candidate))) {
+                addGimyIframeDerivedCandidates(out, labels, seen, candidate);
+            }
+        }
+    }
+
+    private static void addGimyIframeDerivedCandidates(List<String> out, Map<String, String> labels, Set<String> seen, String iframeUrl) {
+        if (iframeUrl == null || iframeUrl.trim().isEmpty() || !"gimy".equals(sourceSite(iframeUrl))) {
+            return;
+        }
+        String playSource = queryParameter(iframeUrl, "url");
+        if (playSource.isEmpty()) {
+            return;
+        }
+        String decoded = decodeMacCmsUrl(playSource, 0);
+        for (String value : splitCandidateValue(decoded)) {
+            String resolved = resolveUrl(iframeUrl, value);
+            if (resolved != null && isMediaUrl(resolved) && seen.add(resolved)) {
+                out.add(resolved);
+                putLabel(labels, resolved, "Gimy iframe direct media");
+            }
+        }
+        String parseApi = joinUrl(iframeUrl, "parse.php?url=" + urlEncode(playSource));
+        if (parseApi != null && looksLikeMediaOrPlayer(parseApi) && seen.add(parseApi)) {
+            out.add(parseApi);
+            putLabel(labels, parseApi, "Gimy parse API");
+        }
+    }
+
+    private static void addGimyDetailCandidates(List<String> out, Map<String, String> labels, String pageUrl, String site) {
+        if (!"gimy".equals(site)) {
+            return;
+        }
+        String vodId = gimyPlayVodId(pageUrl);
+        if (vodId.isEmpty()) {
+            return;
+        }
+        Set<String> seen = new LinkedHashSet<>(out);
+        String base = siteRoot(pageUrl, "https://gimy.tube");
+        for (String path : new String[]{"/title/", "/vod/", "/detail/", "/voddetail/"}) {
+            String candidate = joinUrl(base, path + vodId + ".html");
+            if (candidate != null && !sameUrlWithoutFragment(pageUrl, candidate) && seen.add(candidate)) {
+                out.add(candidate);
+                putLabel(labels, candidate, "Gimy detail fallback");
+            }
+        }
+    }
+
+    private static String gimyPlayVodId(String rawUrl) {
+        Uri uri = Uri.parse(rawUrl == null ? "" : rawUrl);
+        String path = uri.getPath() == null ? "" : uri.getPath();
+        Matcher matcher = GIMY_PLAY_PAGE_ID.matcher(path);
+        if (!matcher.find()) {
+            return "";
+        }
+        String first = matcher.group(1);
+        String second = matcher.group(2);
+        return first == null || first.isEmpty() ? (second == null ? "" : second) : first;
+    }
+
     private static void addMovieFfmExternalCandidates(List<String> out, Map<String, String> labels, String pageText, String pageUrl, String site) {
         if (!"movieffm".equals(site)) {
             return;
@@ -268,6 +421,54 @@ final class MediaResolver {
             out.add(candidate);
             putLabel(labels, candidate, label);
         }
+    }
+
+    private static void addMovieFfmEpisodeCandidates(List<String> out, Map<String, String> labels, String pageText, String pageUrl, String site) {
+        if (!"movieffm".equals(site)) {
+            return;
+        }
+        String text = htmlDecoded(pageText);
+        Set<String> seen = new LinkedHashSet<>(out);
+        Matcher detailMatcher = MOVIEFFM_DRAMA_DETAIL_URL.matcher(text);
+        while (detailMatcher.find()) {
+            addMovieFfmPageCandidate(out, labels, seen, pageUrl, detailMatcher.group(1), "MovieFFM drama detail");
+        }
+        Matcher episodeMatcher = MOVIEFFM_EPISODE_JSON.matcher(text);
+        while (episodeMatcher.find()) {
+            addMovieFfmPageCandidate(out, labels, seen, pageUrl, episodeMatcher.group(2), "MovieFFM episode " + normalizeMovieFfmEpisodeName(episodeMatcher.group(1)));
+        }
+        Matcher absoluteMatcher = MOVIEFFM_EPISODE_ABSOLUTE.matcher(text);
+        while (absoluteMatcher.find()) {
+            String value = absoluteMatcher.group();
+            String lowered = value.toLowerCase(Locale.US);
+            if (lowered.contains("/play/") || lowered.contains("/vodplay/") || lowered.contains("/episode/")) {
+                addMovieFfmPageCandidate(out, labels, seen, pageUrl, value, "MovieFFM episode page");
+            }
+        }
+    }
+
+    private static void addMovieFfmPageCandidate(List<String> out, Map<String, String> labels, Set<String> seen, String pageUrl, String rawUrl, String label) {
+        String candidate = resolveUrl(pageUrl, rawUrl);
+        if (candidate != null && sameOrKnownMediaHost(pageUrl, candidate) && seen.add(candidate)) {
+            out.add(candidate);
+            putLabel(labels, candidate, label);
+        }
+    }
+
+    private static String normalizeMovieFfmEpisodeName(String rawName) {
+        String cleaned = cleanLabel(rawName);
+        Matcher numbered = Pattern.compile("^0*(\\d{1,3})$").matcher(cleaned);
+        if (numbered.find()) {
+            try {
+                int number = Integer.parseInt(numbered.group(1));
+                if (number > 0 && number < 100) {
+                    return String.format(Locale.US, "%02d", number);
+                }
+            } catch (NumberFormatException ignored) {
+                return cleaned;
+            }
+        }
+        return cleaned;
     }
 
     private static void addXiaoyaPlayCandidates(List<String> out, Map<String, String> labels, String pageText, String pageUrl, String site) {
@@ -962,12 +1163,23 @@ final class MediaResolver {
         String lowered = host == null ? "" : host.toLowerCase(Locale.US);
         return lowered.contains("mixdrop.ag")
                 || lowered.contains("m1xdrop.click")
-                || lowered.contains("dood.so")
-                || lowered.contains("dood.pm")
-                || lowered.contains("dood.wf")
-                || lowered.contains("dood.re")
-                || lowered.contains("dood.yt")
+                || isDoodFamilyHost(lowered)
                 || lowered.contains("evoload.io");
+    }
+
+    private static boolean isDoodFamilyHost(String loweredHost) {
+        String host = loweredHost == null ? "" : loweredHost.toLowerCase(Locale.US);
+        return host.contains("dood.video")
+                || host.contains("doodstream.")
+                || host.contains("d000d.")
+                || host.contains("do7go.com")
+                || host.contains("dooood.")
+                || host.contains("dood.")
+                || host.contains("dood.so")
+                || host.contains("dood.pm")
+                || host.contains("dood.wf")
+                || host.contains("dood.re")
+                || host.contains("dood.yt");
     }
 
     private static boolean isXiaoyaPlayUrl(String rawUrl) {
@@ -977,9 +1189,141 @@ final class MediaResolver {
         return host.contains("xiaoyakankan") && path.contains("/vod/play/id/");
     }
 
+    private static String decodeGgJavEmbedMediaUrl(String embedUrl) {
+        if (embedUrl == null || embedUrl.trim().isEmpty()) {
+            return "";
+        }
+        try {
+            String encoded = Uri.parse(embedUrl).getQueryParameter("u");
+            if (encoded == null || encoded.trim().isEmpty()) {
+                return "";
+            }
+            String padded = encoded + repeat("=", (4 - encoded.length() % 4) % 4);
+            byte[] bytes;
+            try {
+                bytes = Base64.decode(padded, Base64.URL_SAFE);
+            } catch (IllegalArgumentException ignored) {
+                bytes = Base64.decode(padded, Base64.DEFAULT);
+            }
+            return new String(bytes, "UTF-8").trim();
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private static List<String> decodeGgJavObfuscatedLinks(String encodedValue) {
+        List<String> urls = new ArrayList<>();
+        if (encodedValue == null || encodedValue.trim().isEmpty()) {
+            return urls;
+        }
+        try {
+            String encoded = encodedValue.trim();
+            String padded = encoded + repeat("=", (4 - encoded.length() % 4) % 4);
+            byte[] payload = Base64.decode(padded, Base64.DEFAULT);
+            StringBuilder decodedBuilder = new StringBuilder();
+            for (byte rawByte : payload) {
+                decodedBuilder.append((char) ((rawByte & 0xff) - 0x58));
+            }
+            JSONObject object = new JSONObject(decodedBuilder.toString());
+            JSONArray names = object.names();
+            if (names == null) {
+                return urls;
+            }
+            for (int i = 0; i < names.length(); i++) {
+                Object raw = object.opt(String.valueOf(names.opt(i)));
+                collectGgJavObfuscatedValue(urls, raw);
+            }
+        } catch (Exception ignored) {
+            return urls;
+        }
+        return urls;
+    }
+
+    private static void collectGgJavObfuscatedValue(List<String> urls, Object raw) {
+        if (raw == null || raw == JSONObject.NULL) {
+            return;
+        }
+        if (raw instanceof JSONArray) {
+            JSONArray array = (JSONArray) raw;
+            for (int i = 0; i < array.length(); i++) {
+                collectGgJavObfuscatedValue(urls, array.opt(i));
+            }
+            return;
+        }
+        String value = String.valueOf(raw).trim();
+        if (!value.isEmpty() && !urls.contains(value)) {
+            urls.add(value);
+        }
+    }
+
+    private static List<String> expandGgJavMediaVariants(String rawUrl) {
+        List<String> variants = new ArrayList<>();
+        String normalized = rawUrl == null ? "" : rawUrl.trim().replace("\\/", "/").replace("&amp;", "&");
+        if (normalized.isEmpty()) {
+            return variants;
+        }
+        addUnique(variants, normalized);
+        Uri uri = Uri.parse(normalized);
+        String path = uri.getPath() == null ? "" : uri.getPath();
+        if (path.toLowerCase(Locale.US).endsWith(".mp4")) {
+            addUnique(variants, rebuildUri(uri, path + "/index.m3u8"));
+        } else if (path.toLowerCase(Locale.US).endsWith(".mp4/index.m3u8")) {
+            addUnique(variants, rebuildUri(uri, path.substring(0, path.length() - "/index.m3u8".length())));
+        }
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.US);
+        Matcher hostMatcher = Pattern.compile("video-(\\d+)\\.ggjav\\.com", Pattern.CASE_INSENSITIVE).matcher(host);
+        if (!hostMatcher.matches()) {
+            return variants;
+        }
+        List<String> current = new ArrayList<>(variants);
+        for (String candidate : current) {
+            Uri candidateUri = Uri.parse(candidate);
+            for (int i = 1; i <= 8; i++) {
+                String altHost = "video-" + i + ".ggjav.com";
+                if (!altHost.equals(host)) {
+                    addUnique(variants, rebuildUri(candidateUri, candidateUri.getPath(), altHost));
+                }
+            }
+        }
+        return variants;
+    }
+
+    private static void addUnique(List<String> out, String value) {
+        if (value != null && !value.trim().isEmpty() && !out.contains(value)) {
+            out.add(value);
+        }
+    }
+
+    private static String rebuildUri(Uri uri, String path) {
+        return rebuildUri(uri, path, uri.getHost());
+    }
+
+    private static String rebuildUri(Uri uri, String path, String host) {
+        Uri.Builder builder = new Uri.Builder()
+                .scheme(uri.getScheme() == null ? "https" : uri.getScheme())
+                .encodedAuthority(host == null ? "" : host)
+                .encodedPath(path == null ? "" : path);
+        if (uri.getEncodedQuery() != null) {
+            builder.encodedQuery(uri.getEncodedQuery());
+        }
+        if (uri.getEncodedFragment() != null) {
+            builder.encodedFragment(uri.getEncodedFragment());
+        }
+        return builder.build().toString();
+    }
+
+    private static String repeat(String value, int count) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            builder.append(value);
+        }
+        return builder.toString();
+    }
+
     private static boolean looksLikeMediaOrPlayer(String url) {
         String lowered = url.toLowerCase(Locale.US);
         return isMediaUrl(url)
+                || isMovieFfmExternalHost(url)
                 || lowered.contains("/parse")
                 || lowered.contains("/player")
                 || lowered.contains("/dp/")
@@ -1056,9 +1400,16 @@ final class MediaResolver {
                 score -= 150;
             }
         } else if ("gimy".equals(sourceSite)) {
-            score += hostPenalty(lowered, new String[]{"ppqrrs", "qqqrst", "vodcnd", "phimgood", "ryiplay"});
+            score += hostPenalty(lowered, new String[]{"xluuss", "phimgood", "ppqrrs", "ryplay", "ryiplay", "yzzy", "hhiklm", "jisuziyuanbf", "dytt-cinema", "dytt-kan", "modujx", "jisutian", "jisuzyv"});
         } else if ("xiaoyakankan".equals(sourceSite)) {
             score += hostPenalty(lowered, new String[]{"huyall", "ijycnd", "jisuzyv", "gsuus", "qsstvw", "taopianplay1"});
+        } else if ("mixdrop".equals(sourceSite) || "dood".equals(sourceSite) || "evoload".equals(sourceSite)) {
+            if (isMediaUrl(lowered)) {
+                score -= 160;
+            }
+            if (isMovieFfmExternalHost(url)) {
+                score -= 80;
+            }
         } else if ("ani_gamer".equals(sourceSite)) {
             if (lowered.contains("animevideo.php?sn=")) {
                 score -= 120;

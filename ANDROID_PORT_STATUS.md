@@ -7,12 +7,14 @@ This Android app is a native port track for the desktop downloader in `downloade
 - APK build pipeline with local JDK, Android SDK, and Gradle.
 - Native Android UI for entering or sharing a URL.
 - Android-friendly main screen with a left hamburger menu, right overflow settings menu, and download queue centered as the primary content.
+- Download queue content is now hidden by default behind a bottom Download Queue button; tapping the button opens a queue dialog with the current file/progress content.
 - Overflow settings now hides the system-default and four-language selector entries and instead exposes a download-directory picker backed by Android's system folder selection.
 - Completed outputs now export to the user-selected download directory when one is configured, falling back to public Downloads/AI Test Downloader otherwise.
 - Completed-output export now falls back to public Downloads/AI Test Downloader if the selected download directory becomes unavailable or its persisted Android permission is revoked.
 - Main UI now uses a calm Japanese-inspired Android layout with pale surfaces, subtle borders, the new-download controls above the download queue, and large touch-friendly controls.
 - New-download controls now list the latest three completed videos from the app download directory above the playback controls, allowing one to be selected and opened in an external player.
 - Completed-video playback now lists only playable files that still exist in the app download directory, the selected download directory, or the public Downloads/AI Test Downloader directory, shows filenames without extensions or numbering, and uses right-side up/down controls to select beyond the three visible rows without adding vertical height.
+- Completed-video playback now treats a selected download directory as authoritative: when one is configured, the playable list is built only from that directory, so an empty selected directory shows no playable files instead of falling back to older app/public-download entries.
 - Completed-video playback controls now have English, Traditional Chinese, Simplified Chinese, and Japanese dictionary entries instead of falling back to mixed UI text.
 - Completed-video playback now refreshes when returning to the app and includes completed files exported to public Downloads/AI Test Downloader, using scoped read-only content URIs for playback.
 - Completed-video playback no longer uses MediaStore history for its selectable list, so deleted files that remain in Android media indexes are not shown as playable choices.
@@ -104,7 +106,12 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Player source arrays and common MovieFFM/Gimy/Xiaoya episode/play-page links are extracted as resolver candidates.
 - MovieFFM external source extraction now detects `videos` blocks, download links, shortcode URLs, `videourl`, and iframe JSON entries for Mixdrop, Dood, and Evoload style hosts, including Mixdrop `/f/` to `/e/` playback normalization.
 - Mixdrop external player pages now extract `wurl` script media fields, improving recursive MovieFFM external-source resolution.
+- Dood-family external hosts now use a broader desktop-aligned host detector, covering `dood.video`, `doodstream`, `d000d`, `do7go`, `dooood`, and related `dood.*` variants when ranking MovieFFM external-source candidates.
+- Mixdrop, Dood-family, and Evoload URLs are now identified as external player source sites instead of generic pages, and iframe/player candidate detection accepts those hosts directly during recursive resolution.
+- MovieFFM drama/detail pages now expose desktop-style `/drama/` season detail candidates, JSON `name`/`url` episode candidates, and absolute `/play/`, `/vodplay/`, or `/episode/` page candidates.
 - Gimy `player_data` now builds desktop-style `aiplayer` and `play.gimy01.tv` iframe candidates from `url`, `from`, and `link_next`, improving deep Gimy play-page traversal before generic media extraction.
+- Gimy iframe/player pages now expose `parse.php?url=...` API candidates and direct media URLs derived from iframe `url=` parameters, plus a desktop-aligned stream host preference order.
+- Gimy play/watch/eps/video pages now derive desktop-style detail fallback candidates such as `/title/`, `/vod/`, `/detail/`, and `/voddetail/`, and parse responses recognize `playurl` media fields.
 - XiaoyaKankan play-page extraction now scans links, data attributes, and script fields for `/vod/play/id/` candidates before recursive media resolution.
 - XiaoyaKankan `.com` `var pp` line data is now parsed into same-episode media candidates, using the `vod` query value to select matching line entries when present.
 - Anime1 page parser resolves `data-apireq` through the Anime1 API and extracts direct media URLs.
@@ -119,6 +126,8 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Large platform/site detection for Dailymotion, YouTube, Bilibili, iQIYI, Ikanbot, and YFSP so resolver logs and task history no longer fall back to generic for those URLs.
 - Social platform detection and embedded media extraction for Instagram, Facebook, and X/Twitter metadata, JSON payloads, and Twitter media variants.
 - First JAV/adult site cluster detection and play-page candidate traversal for MissAV, Jable, NJAV/NJAVTV, SupJAV, Hanime1, 18JAV/18AV, 85xVideo, AVBebe, AVJoy, BestJavPorn, JavDock, JavFilms, TinyAVideo, GoodAV17, HohoJ, GGJAV, and TKTube.
+- GoodAV17/HohoJ/GGJAV pages now decode `ggjav.com/main/embed?u=...` iframe URLs into direct media candidates and add MP4/HLS plus `video-N.ggjav.com` host fallbacks.
+- GGJAV obfuscated `var l = ...` player payloads are now decoded into direct media candidates and pass through the same MP4/HLS plus host fallback expansion.
 - Wider player JSON extraction for common manifest and stream keys such as `manifestUrl`, `streamUrl`, `videoUrl`, `mediaUrl`, `dashUrl`, `qualities`, and `streams`.
 - HLS `.m3u8` segment download and merge into a `.ts` output.
 - HLS master playlist variant selection by bandwidth.
@@ -157,7 +166,7 @@ This Android app is a native port track for the desktop downloader in `downloade
 
 ## Not Yet Ported From Desktop
 
-- Full deep per-site parsers for MovieFFM, Gimy, XiaoyaKankan, YFSP, iQIYI, YouTube, Dailymotion, Bilibili, Ikanbot, social platforms, and adult/JAV sites; MovieFFM now has first external-host source extraction plus Mixdrop `wurl` media extraction, Gimy now has first desktop-style iframe construction from `player_data`, and XiaoyaKankan now has broader play-page plus `var pp` media candidate extraction, while NNYY, 3KOR, DramaSQ, Olevod/OleHDTV, Thanju, 99iTV, and 777TV currently have MacCMS-like generic traversal, and Dailymotion/YouTube/Bilibili/iQIYI/Ikanbot/YFSP/social platforms plus the first adult/JAV cluster currently have site detection and generic stream/play-page extraction only.
+- Full deep per-site parsers for MovieFFM, Gimy, XiaoyaKankan, YFSP, iQIYI, YouTube, Dailymotion, Bilibili, Ikanbot, social platforms, and adult/JAV sites; MovieFFM now has first external-host source extraction plus Mixdrop `wurl` media extraction, broader Dood-family host detection, direct Mixdrop/Dood/Evoload external-player site recognition, and drama/episode candidate reconstruction, Gimy now has first desktop-style iframe construction from `player_data`, parse API candidate extraction, and play-to-detail fallback reconstruction, XiaoyaKankan now has broader play-page plus `var pp` media candidate extraction, and GoodAV17/HohoJ/GGJAV now decode GGJAV embed and obfuscated player payloads into direct media candidates, while NNYY, 3KOR, DramaSQ, Olevod/OleHDTV, Thanju, 99iTV, and 777TV currently have MacCMS-like generic traversal, and Dailymotion/YouTube/Bilibili/iQIYI/Ikanbot/YFSP/social platforms plus the first adult/JAV cluster currently have site detection and generic stream/play-page extraction only.
 - yt-dlp integration and plugin support.
 - ffmpeg/ffprobe based remux, transcode, deeper duration validation, broad fallback routing, and full multi-audio/multi-period DASH mux parity.
 - Full browser session reuse and impersonation behavior equivalent to `curl_cffi` and desktop browser workflows; pasted Cookie/Referer plus selected request headers, basic Referer/Origin propagation, and persistent app cookie storage are already ported.

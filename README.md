@@ -2,7 +2,7 @@
 
 `Download_Android` 是 Windows 版「下載者」的 Android 原生移植專案。目標是在手機上提供接近桌面版的影片搜尋、解析、下載、續傳、播放與診斷能力，同時維持 Android 友善的操作方式。
 
-目前 Android 版本：`0.130.0`（`versionCode 130`）。
+目前 Android 版本：`0.140.0`（`versionCode 140`）。
 
 ## App 特色
 
@@ -13,7 +13,15 @@
 - Android 下載佇列只顯示目前未完成的下載檔案與進度，重新啟動時會清除已完成項目。
 - 右上角設定選單提供下載目錄設定，可選擇完成檔匯出的資料夾。
 - 完成影片清單只顯示實際存在於下載目錄的可播放檔案，最多顯示三筆，並可用右側上下按鈕切換更多檔案。
+- 當已設定下載目錄時，播放清單只讀取該目錄；如果該目錄是空的，就不顯示任何可播放檔案。
 
+- v0.136.0: 右上角設定選單新增「關於」，顯示下載者版本與編譯年月日。
+- v0.136.0: GoodAV17/HohoJ/GGJAV 會解碼 `ggjav.com/main/embed?u=...` iframe，加入直接媒體與 video-N.ggjav.com 備援候選。
+- v0.136.0: UI 底部下載隊列改為按鈕，預設不顯示隊列內容，按下按鈕才以視窗顯示目前下載檔案與進度。
+- v0.137.0: GGJAV 的 `var l = ...` 混淆播放器資料會被解碼成直接媒體候選，並套用 MP4/HLS 與 video-N.ggjav.com 備援。
+- v0.138.0: Gimy iframe/player 頁會展開 `parse.php?url=...` API 候選與 iframe `url=` 內的直接媒體候選，並套用接近 Windows 版的 Gimy 串流排序。
+- v0.139.0: Gimy 播放頁會反推出 `/title/`、`/vod/`、`/detail/`、`/voddetail/` 詳情頁備援候選，parse 回應也會辨識 `playurl` 媒體欄位。
+- v0.140.0: MovieFFM 劇集頁會提取 `/drama/` 季/詳情頁、JSON `name`/`url` 集數，以及頁面中的 `/play/`、`/vodplay/`、`/episode/` 播放頁候選。
 ## 下載功能
 
 - 支援直接貼上或分享影片網址到 App。
@@ -36,7 +44,12 @@
 - 支援 MovieFFM、Gimy、XiaoyaKankan、MacCMS 類站點、Anime1、AniGamer、部分社群平台與 JAV/adult 站群的解析基礎。
 - MovieFFM 會提取 Mixdrop、Dood、Evoload 類外部播放來源，並將 Mixdrop 檔案頁正規化為播放頁候選。
 - Mixdrop 外部播放器頁會額外抽取 `wurl` 腳本媒體欄位，補強 MovieFFM 外部來源遞迴解析。
+- Dood 系列外部播放網域比照 Windows 版擴大辨識，涵蓋 `dood.video`、`doodstream`、`d000d`、`do7go`、`dooood` 與常見 `dood.*` 變體。
+- Mixdrop、Dood 系列、Evoload 直接網址與 iframe 會被辨識為外部播放器來源，避免落回 generic 頁面標籤。
+- MovieFFM 劇集頁會補充季/詳情頁與集數播放頁候選，提升影集、連續劇搜尋後的來源重建能力。
 - Gimy 頁面的 `player_data` 會生成常見 `aiplayer` / `play.gimy01.tv` iframe 候選，提升進入真實播放器頁的成功率。
+- Gimy iframe/player 頁會提取 `parse.php?url=...` API 候選，並從 iframe `url=` 參數推導直接媒體候選。
+- Gimy 播放頁可反推出常見詳情頁備援候選，方便在播放頁失敗時重新建立集數與來源列表。
 - XiaoyaKankan 會從連結、資料屬性與 script 欄位提取 `/vod/play/id/` 播放頁候選。
 - XiaoyaKankan `.com` 頁面的 `var pp` 線路資料會被解析成同集數的媒體候選來源。
 - 支援遞迴追蹤播放頁、iframe、API 頁面，最多追蹤多層播放來源。
@@ -130,7 +143,7 @@ C:\antigravity\downloader_android\dist
 ## 目前仍在移植的桌面版功能
 
 - 完整 FFmpeg/ffprobe 等價能力：更廣泛的 DASH mux 相容性、轉碼 fallback、duration/完整性驗證仍需繼續補齊。
-- 更深層的單站解析器：MovieFFM、Gimy、Xiaoya、JAV/adult 站群仍需持續移植 Windows 版的深層站點邏輯；MovieFFM 外部播放器已補上 Mixdrop `wurl` 媒體欄位抽取。
+- 更深層的單站解析器：MovieFFM、Gimy、Xiaoya、JAV/adult 站群仍需持續移植 Windows 版的深層站點邏輯；MovieFFM 外部播放器已補上 Mixdrop `wurl` 媒體欄位抽取、更完整的 Dood 系列網域辨識、Mixdrop/Dood/Evoload 外部播放器站點標籤，以及劇集/集數候選重建；Gimy 已補上 iframe parse API 候選展開與播放頁反推詳情頁備援；GoodAV17/HohoJ/GGJAV 已補上 GGJAV embed 與 `var l = ...` 混淆播放器解析。
 - yt-dlp/plugin 類 fallback：Android 端需要更適合手機環境的替代方案或受控整合策略。
 - 更完整的搜尋結果審核 UI：目前 Android 已有候選來源面板，但桌面版的完整替代站提示與結果審核仍在移植中。
 

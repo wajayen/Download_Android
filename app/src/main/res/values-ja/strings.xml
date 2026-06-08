@@ -154,4 +154,6 @@
     <string name="engine_muxed_dash_audio">DASH 映像と音声を多重化しました</string>
     <string name="engine_mux_dash_audio_failed_keep_video">DASH 音声の多重化に失敗しました。映像のみの出力を保持します：%1$s</string>
     <string name="engine_media_duration_validated">メディアの長さを検証しました</string>
+    <string name="action_about">&#12395;&#12388;&#12356;&#12390;</string>
+    <string name="about_message">%1$s&#10;&#12496;&#12540;&#12472;&#12519;&#12531;&#65306;%2$s&#10;&#12499;&#12523;&#12489;&#26085;&#65306;%3$s</string>
 </resources>

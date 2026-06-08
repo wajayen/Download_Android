@@ -2,6 +2,7 @@ package tw.wajay.aitestdownloader;
 
 import android.app.Activity;
 import android.Manifest;
+import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -226,14 +227,11 @@ public final class MainActivity extends Activity {
         playAfterButton.setOnClickListener(view -> startDownload(true));
         inputPanel.addView(playAfterButton, matchWrap());
 
-        TextView queueTitle = new TextView(this);
-        queueTitle.setText(getString(R.string.section_download_queue));
-        styleSectionTitle(queueTitle);
-        queueTitle.setPadding(0, dp(12), 0, dp(4));
-        root.addView(queueTitle, matchWrap());
-
-        LinearLayout queueCard = contentPanel();
-        root.addView(queueCard, matchWrap());
+        Button queueButton = new Button(this);
+        queueButton.setText(getString(R.string.section_download_queue));
+        styleSecondaryButton(queueButton);
+        queueButton.setOnClickListener(view -> showDownloadQueueDialog());
+        root.addView(queueButton, matchWrap());
 
         statusText = new TextView(this);
         statusText.setText(getString(R.string.status_idle));
@@ -243,7 +241,6 @@ public final class MainActivity extends Activity {
         statusText.setGravity(Gravity.TOP | Gravity.START);
         statusText.setLineSpacing(dp(2), 1.0f);
         statusText.setPadding(dp(2), 0, dp(2), dp(10));
-        queueCard.addView(statusText, matchWrap());
 
         sourcePanel = contentPanel();
         sourcePanel.setVisibility(View.GONE);
@@ -440,6 +437,7 @@ public final class MainActivity extends Activity {
         menu.getMenu().add(0, 1, 0, getString(R.string.action_refresh));
         menu.getMenu().add(0, 2, 1, getString(R.string.action_cancel));
         menu.getMenu().add(0, 3, 2, getString(R.string.action_set_download_directory));
+        menu.getMenu().add(0, 4, 3, getString(R.string.action_about));
         menu.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == 1) {
                 refreshStatus();
@@ -454,9 +452,33 @@ public final class MainActivity extends Activity {
                 openDownloadDirectoryPicker();
                 return true;
             }
+            if (item.getItemId() == 4) {
+                showAboutDialog();
+                return true;
+            }
             return false;
         });
         menu.show();
+    }
+
+    private void showAboutDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.action_about))
+                .setMessage(getString(R.string.about_message, getString(R.string.app_name), BuildConfig.VERSION_NAME, BuildConfig.BUILD_DATE))
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
+    }
+
+    private void showDownloadQueueDialog() {
+        CharSequence message = statusText == null ? "" : statusText.getText();
+        if (message == null || message.toString().trim().isEmpty()) {
+            message = getString(R.string.status_idle);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.section_download_queue))
+                .setMessage(message)
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
     }
 
     private void openDownloadDirectoryPicker() {
@@ -894,6 +916,11 @@ public final class MainActivity extends Activity {
 
     private List<CompletedVideo> latestCompletedVideos() {
         List<CompletedVideo> videos = new ArrayList<>();
+        if (DownloadDirectorySettings.hasCustomDirectory(this)) {
+            addCompletedVideosFromTree(videos);
+            videos.sort((left, right) -> Long.compare(right.updatedAt, left.updatedAt));
+            return labeledCompletedVideos(videos);
+        }
         File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
         if (dir == null || !dir.isDirectory()) {
             dir = getFilesDir();
@@ -901,7 +928,6 @@ public final class MainActivity extends Activity {
         addCompletedVideos(videos, dir);
         File publicDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "AI Test Downloader");
         addCompletedVideos(videos, publicDir);
-        addCompletedVideosFromTree(videos);
         videos.sort((left, right) -> Long.compare(right.updatedAt, left.updatedAt));
         return labeledCompletedVideos(videos);
     }

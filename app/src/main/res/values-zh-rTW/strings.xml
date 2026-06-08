@@ -154,4 +154,6 @@
     <string name="engine_muxed_dash_audio">已合併 DASH 影片與音訊</string>
     <string name="engine_mux_dash_audio_failed_keep_video">DASH 音訊合併失敗；保留純影片輸出：%1$s</string>
     <string name="engine_media_duration_validated">已驗證媒體長度</string>
+    <string name="action_about">&#38364;&#26044;</string>
+    <string name="about_message">%1$s&#10;&#29256;&#26412;&#65306;%2$s&#10;&#32232;&#35695;&#26085;&#26399;&#65306;%3$s</string>
 </resources>

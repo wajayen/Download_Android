@@ -6,11 +6,16 @@ android {
     namespace "tw.wajay.aitestdownloader"
     compileSdk 35
 
+    buildFeatures {
+        buildConfig true
+    }
+
     defaultConfig {
         applicationId "tw.wajay.aitestdownloader"
         minSdk 23
         targetSdk 35
-        versionCode 130
-        versionName "0.130.0"
+        versionCode 140
+        versionName "0.140.0"
+        buildConfigField "String", "BUILD_DATE", "\"${new java.text.SimpleDateFormat('yyyy年MM月dd日').format(new Date())}\""
     }
 }
