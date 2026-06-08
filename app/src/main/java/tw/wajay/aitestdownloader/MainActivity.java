@@ -6,16 +6,20 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.PopupMenu;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -30,19 +34,25 @@ import java.util.regex.Pattern;
 import org.json.JSONObject;
 
 public final class MainActivity extends Activity {
-    private static final int TEAL = Color.rgb(11, 107, 107);
+    private static final int BACKGROUND = Color.rgb(250, 248, 245);
+    private static final int SURFACE = Color.rgb(255, 255, 253);
+    private static final int SURFACE_TINT = Color.rgb(246, 241, 238);
+    private static final int BORDER = Color.rgb(226, 219, 213);
+    private static final int TEXT_PRIMARY = Color.rgb(39, 43, 50);
+    private static final int TEXT_SECONDARY = Color.rgb(92, 99, 108);
+    private static final int ACCENT = Color.rgb(158, 83, 101);
+    private static final int ACCENT_DARK = Color.rgb(119, 63, 78);
+    private static final int INDIGO = Color.rgb(62, 78, 113);
     private static final Pattern HTTP_URL = Pattern.compile("https?://[^\\s\"'<>]+", Pattern.CASE_INSENSITIVE);
     private static final Pattern HEADER_LINE = Pattern.compile("^\\s*([A-Za-z][A-Za-z0-9-]*)\\s*:\\s*(.+?)\\s*$", Pattern.CASE_INSENSITIVE);
     private static final Pattern CURL_HEADER = Pattern.compile("-H\\s+['\"]([A-Za-z][A-Za-z0-9-]*)\\s*:\\s*([^'\"]+)['\"]", Pattern.CASE_INSENSITIVE);
     private static final Pattern CURL_URL = Pattern.compile("(?:^|\\s)(?:curl|--url)\\s+(?:--location\\s+|--request\\s+\\S+\\s+|--compressed\\s+)*['\"]?(https?://[^\\s'\"<>]+)['\"]?", Pattern.CASE_INSENSITIVE);
     private EditText urlInput;
     private EditText fileNameInput;
-    private Spinner languageSpinner;
     private Spinner sourceSpinner;
     private TextView statusText;
     private TaskStore taskStore;
     private List<TaskStore.CandidateOption> sourceOptions = new ArrayList<>();
-    private boolean languageSpinnerReady = false;
 
     private static final class BrowserRequestContext {
         final List<String> urls;
@@ -85,143 +95,215 @@ public final class MainActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(pad, pad, pad, pad);
-        root.setBackgroundColor(Color.rgb(247, 248, 250));
+        root.setPadding(pad, dp(12), pad, pad);
+        root.setBackgroundColor(BACKGROUND);
+
+        LinearLayout toolbar = new LinearLayout(this);
+        toolbar.setOrientation(LinearLayout.HORIZONTAL);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        root.addView(toolbar, matchWrap());
+
+        Button menuButton = toolbarButton(getString(R.string.action_open_menu), "\u2630");
+        menuButton.setOnClickListener(view -> showNavigationMenu(view));
+        toolbar.addView(menuButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
         TextView title = new TextView(this);
         title.setText(getString(R.string.app_name));
-        title.setTextSize(28);
-        title.setTextColor(Color.rgb(28, 35, 42));
-        title.setGravity(Gravity.START);
-        root.addView(title, matchWrap());
+        title.setTextSize(22);
+        title.setTextColor(TEXT_PRIMARY);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setGravity(Gravity.CENTER);
+        title.setSingleLine(true);
+        toolbar.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView subtitle = new TextView(this);
-        subtitle.setText(getString(R.string.build_ready));
-        subtitle.setTextSize(15);
-        subtitle.setTextColor(Color.rgb(88, 96, 105));
-        subtitle.setPadding(0, dp(4), 0, dp(16));
-        root.addView(subtitle, matchWrap());
+        Button settingsButton = toolbarButton(getString(R.string.action_open_settings), "...");
+        settingsButton.setOnClickListener(view -> showSettingsMenu(view));
+        toolbar.addView(settingsButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        TextView languageLabel = new TextView(this);
-        languageLabel.setText(getString(R.string.label_language));
-        languageLabel.setTextSize(14);
-        languageLabel.setTextColor(Color.rgb(48, 56, 64));
-        root.addView(languageLabel, matchWrap());
+        TextView queueTitle = new TextView(this);
+        queueTitle.setText(getString(R.string.section_download_queue));
+        styleSectionTitle(queueTitle);
+        queueTitle.setPadding(0, dp(12), 0, dp(4));
+        root.addView(queueTitle, matchWrap());
 
-        languageSpinner = new Spinner(this);
-        configureLanguageSpinner();
-        root.addView(languageSpinner, matchWrap());
+        LinearLayout queueCard = contentPanel();
+        root.addView(queueCard, matchWrap());
+
+        statusText = new TextView(this);
+        statusText.setText(getString(R.string.status_idle));
+        statusText.setTextSize(15);
+        statusText.setTextColor(TEXT_SECONDARY);
+        statusText.setMinLines(6);
+        statusText.setGravity(Gravity.TOP | Gravity.START);
+        statusText.setLineSpacing(dp(2), 1.0f);
+        statusText.setPadding(dp(2), 0, dp(2), dp(10));
+        queueCard.addView(statusText, matchWrap());
+
+        sourceSpinner = new Spinner(this);
+        queueCard.addView(sourceSpinner, matchWrap());
+
+        Button selectedSourceButton = new Button(this);
+        selectedSourceButton.setText(getString(R.string.action_queue_selected_source));
+        styleSecondaryButton(selectedSourceButton);
+        selectedSourceButton.setOnClickListener(view -> retrySelectedSource());
+        queueCard.addView(selectedSourceButton, matchWrap());
+
+        TextView addTitle = new TextView(this);
+        addTitle.setText(getString(R.string.section_new_download));
+        styleSectionTitle(addTitle);
+        addTitle.setPadding(0, dp(12), 0, dp(4));
+        root.addView(addTitle, matchWrap());
+
+        LinearLayout inputPanel = contentPanel();
+        root.addView(inputPanel, matchWrap());
 
         urlInput = new EditText(this);
         urlInput.setHint(getString(R.string.hint_url));
         urlInput.setSingleLine(false);
         urlInput.setMinLines(3);
         urlInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        root.addView(urlInput, matchWrap());
+        styleInput(urlInput);
+        inputPanel.addView(urlInput, matchWrap());
 
         fileNameInput = new EditText(this);
         fileNameInput.setHint(getString(R.string.hint_file_name));
         fileNameInput.setSingleLine(true);
         fileNameInput.setInputType(InputType.TYPE_CLASS_TEXT);
-        fileNameInput.setPadding(fileNameInput.getPaddingLeft(), dp(12), fileNameInput.getPaddingRight(), dp(12));
-        root.addView(fileNameInput, matchWrap());
+        styleInput(fileNameInput);
+        inputPanel.addView(fileNameInput, matchWrap());
 
         Button downloadButton = new Button(this);
         downloadButton.setText(getString(R.string.action_download));
-        downloadButton.setTextColor(Color.WHITE);
-        downloadButton.setBackgroundColor(TEAL);
+        stylePrimaryButton(downloadButton);
         downloadButton.setOnClickListener(view -> startDownload());
-        root.addView(downloadButton, matchWrap());
-
-        Button cancelButton = new Button(this);
-        cancelButton.setText(getString(R.string.action_cancel));
-        cancelButton.setOnClickListener(view -> {
-            startService(DownloadService.cancelIntent(this));
-            statusText.setText(getString(R.string.status_cancelling));
-        });
-        root.addView(cancelButton, matchWrap());
-
-        Button refreshButton = new Button(this);
-        refreshButton.setText(getString(R.string.action_refresh));
-        refreshButton.setOnClickListener(view -> refreshStatus());
-        root.addView(refreshButton, matchWrap());
-
-        Button retryButton = new Button(this);
-        retryButton.setText(getString(R.string.action_retry_failed));
-        retryButton.setOnClickListener(view -> retryLatestFailed());
-        root.addView(retryButton, matchWrap());
-
-        Button nextSourceButton = new Button(this);
-        nextSourceButton.setText(getString(R.string.action_try_next_source));
-        nextSourceButton.setOnClickListener(view -> retryNextSource());
-        root.addView(nextSourceButton, matchWrap());
-
-        sourceSpinner = new Spinner(this);
-        root.addView(sourceSpinner, matchWrap());
-
-        Button selectedSourceButton = new Button(this);
-        selectedSourceButton.setText(getString(R.string.action_queue_selected_source));
-        selectedSourceButton.setOnClickListener(view -> retrySelectedSource());
-        root.addView(selectedSourceButton, matchWrap());
-
-        Button clearButton = new Button(this);
-        clearButton.setText(getString(R.string.action_clear_finished));
-        clearButton.setOnClickListener(view -> clearFinishedTasks());
-        root.addView(clearButton, matchWrap());
-
-        Button exportLogsButton = new Button(this);
-        exportLogsButton.setText(getString(R.string.action_export_logs));
-        exportLogsButton.setOnClickListener(view -> exportLogs());
-        root.addView(exportLogsButton, matchWrap());
-
-        statusText = new TextView(this);
-        statusText.setText(getString(R.string.status_idle));
-        statusText.setTextSize(15);
-        statusText.setTextColor(Color.rgb(48, 56, 64));
-        statusText.setPadding(0, dp(18), 0, 0);
-        root.addView(statusText, matchWrap());
+        inputPanel.addView(downloadButton, matchWrap());
 
         ScrollView scroll = new ScrollView(this);
+        scroll.setBackgroundColor(BACKGROUND);
         scroll.addView(root);
         return scroll;
     }
 
-    private void configureLanguageSpinner() {
-        LanguageSettings.Option[] options = LanguageSettings.options();
-        List<String> labels = new ArrayList<>();
-        for (LanguageSettings.Option option : options) {
-            labels.add(getString(option.labelResId));
-        }
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(
-                this,
-                android.R.layout.simple_spinner_item,
-                labels);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        languageSpinner.setAdapter(adapter);
-        languageSpinner.setSelection(LanguageSettings.selectedIndex(this));
-        languageSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(android.widget.AdapterView<?> parent, android.view.View view, int position, long id) {
-                if (!languageSpinnerReady) {
-                    languageSpinnerReady = true;
-                    return;
-                }
-                if (position < 0 || position >= options.length) {
-                    return;
-                }
-                String selected = options[position].code;
-                if (selected.equals(LanguageSettings.current(MainActivity.this))) {
-                    return;
-                }
-                LanguageSettings.set(MainActivity.this, selected);
-                Toast.makeText(MainActivity.this, getString(R.string.toast_language_changed), Toast.LENGTH_SHORT).show();
-                recreate();
-            }
+    private Button toolbarButton(String description, String text) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextSize(22);
+        button.setTextColor(INDIGO);
+        button.setAllCaps(false);
+        button.setContentDescription(description);
+        button.setPadding(0, 0, 0, 0);
+        button.setMinHeight(dp(48));
+        button.setBackground(roundedBackground(SURFACE_TINT, BORDER, 1, 8));
+        return button;
+    }
 
-            @Override
-            public void onNothingSelected(android.widget.AdapterView<?> parent) {
+    private LinearLayout contentPanel() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(14), dp(14), dp(14), dp(8));
+        panel.setBackground(roundedBackground(SURFACE, BORDER, 1, 8));
+        return panel;
+    }
+
+    private void styleSectionTitle(TextView textView) {
+        textView.setTextSize(16);
+        textView.setTextColor(TEXT_PRIMARY);
+        textView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+    }
+
+    private void styleInput(EditText editText) {
+        editText.setTextColor(TEXT_PRIMARY);
+        editText.setHintTextColor(Color.rgb(143, 137, 132));
+        editText.setTextSize(15);
+        editText.setPadding(dp(12), dp(10), dp(12), dp(10));
+        editText.setBackground(roundedBackground(Color.rgb(253, 252, 250), Color.rgb(218, 210, 204), 1, 8));
+    }
+
+    private void stylePrimaryButton(Button button) {
+        button.setAllCaps(false);
+        button.setTextColor(Color.WHITE);
+        button.setTextSize(16);
+        button.setMinHeight(dp(48));
+        button.setBackground(roundedBackground(ACCENT, ACCENT_DARK, 1, 8));
+    }
+
+    private void styleSecondaryButton(Button button) {
+        button.setAllCaps(false);
+        button.setTextColor(INDIGO);
+        button.setTextSize(15);
+        button.setMinHeight(dp(44));
+        button.setBackground(roundedBackground(Color.rgb(244, 247, 248), Color.rgb(204, 212, 219), 1, 8));
+    }
+
+    private GradientDrawable roundedBackground(int color, int strokeColor, int strokeDp, int radiusDp) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(radiusDp));
+        if (strokeDp > 0) {
+            drawable.setStroke(dp(strokeDp), strokeColor);
+        }
+        return drawable;
+    }
+
+    private void showNavigationMenu(View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        menu.getMenu().add(0, 1, 0, getString(R.string.action_retry_failed));
+        menu.getMenu().add(0, 2, 1, getString(R.string.action_try_next_source));
+        menu.getMenu().add(0, 3, 2, getString(R.string.action_clear_finished));
+        menu.getMenu().add(0, 4, 3, getString(R.string.action_export_logs));
+        menu.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == 1) {
+                retryLatestFailed();
+                return true;
             }
+            if (item.getItemId() == 2) {
+                retryNextSource();
+                return true;
+            }
+            if (item.getItemId() == 3) {
+                clearFinishedTasks();
+                return true;
+            }
+            if (item.getItemId() == 4) {
+                exportLogs();
+                return true;
+            }
+            return false;
         });
+        menu.show();
+    }
+
+    private void showSettingsMenu(View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        menu.getMenu().add(0, 1, 0, getString(R.string.action_refresh));
+        menu.getMenu().add(0, 2, 1, getString(R.string.action_cancel));
+        LanguageSettings.Option[] options = LanguageSettings.options();
+        for (int i = 0; i < options.length; i++) {
+            menu.getMenu().add(1, 1000 + i, 10 + i, getString(options[i].labelResId));
+        }
+        menu.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == 1) {
+                refreshStatus();
+                return true;
+            }
+            if (item.getItemId() == 2) {
+                startService(DownloadService.cancelIntent(this));
+                statusText.setText(getString(R.string.status_cancelling));
+                return true;
+            }
+            int languageIndex = item.getItemId() - 1000;
+            if (languageIndex >= 0 && languageIndex < options.length) {
+                String selected = options[languageIndex].code;
+                if (!selected.equals(LanguageSettings.current(this))) {
+                    LanguageSettings.set(this, selected);
+                    Toast.makeText(this, getString(R.string.toast_language_changed), Toast.LENGTH_SHORT).show();
+                    recreate();
+                }
+                return true;
+            }
+            return false;
+        });
+        menu.show();
     }
 
     private void startDownload() {

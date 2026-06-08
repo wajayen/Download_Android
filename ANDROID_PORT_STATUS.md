@@ -6,6 +6,9 @@ This Android app is a native port track for the desktop downloader in `downloade
 
 - APK build pipeline with local JDK, Android SDK, and Gradle.
 - Native Android UI for entering or sharing a URL.
+- Android-friendly main screen with a left hamburger menu, right overflow settings menu, and download queue centered as the primary content.
+- Main UI now uses a calm Japanese-inspired Android layout with pale surfaces, subtle borders, queue-first structure, and large touch-friendly controls.
+- Android app name and launcher icon match the Windows version: `下載者` with the Taiwan symbol icon.
 - Batch URL parsing from pasted/shared text; multiple http(s) links are queued together.
 - Foreground download service and notification progress for long-running downloads.
 - Persistent JSON task queue through SharedPreferences.
@@ -17,6 +20,7 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Structured runtime activity log at the app-specific Documents `logs/activity.jsonl`.
 - Android UI can export the structured runtime activity log to public Downloads for device-side diagnostics.
 - Android UI strings now use resource dictionaries with English, Traditional Chinese, Simplified Chinese, and Japanese translations.
+- App name is localized from the Traditional Chinese source name `下載者` into English, Simplified Chinese, Traditional Chinese, and Japanese.
 - Android UI includes an in-app language selector for system default, English, Traditional Chinese, Simplified Chinese, and Japanese; the saved choice also applies to service notifications.
 - Resolved page URLs propagate Referer and Origin headers into HTTP, HLS, and DASH manifest/key/init/segment requests.
 - HTTP requests share an app-wide persistent cookie jar so cookies captured during page resolution can be reused by later manifest and media requests after service or app restarts.
@@ -57,12 +61,18 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Wider player JSON extraction for common manifest and stream keys such as `manifestUrl`, `streamUrl`, `videoUrl`, `mediaUrl`, `dashUrl`, `qualities`, and `streams`.
 - HLS `.m3u8` segment download and merge into a `.ts` output.
 - HLS master playlist variant selection by bandwidth.
+- HLS master playlist variant selection now reads `RESOLUTION`, `NAME`, and `CODECS`, preferring higher resolution before bandwidth and reporting the selected variant details.
 - HLS AES-128 segment decryption with explicit IV or media sequence IV fallback.
 - HLS segment retry and empty-segment validation.
 - HLS checkpoint resume for matching manifest URL and segment count.
 - HLS `#EXT-X-MAP` init segment handling, including byte-range requests.
+- HLS media segment `#EXT-X-BYTERANGE` handling for byte-range based playlists and single-file segment layouts.
+- HLS byte-range segment parsing now preserves implicit offsets when `#EXT-X-BYTERANGE` omits `@offset`, matching the playlist sequence rules.
 - HLS discontinuity markers flush the current output before continuing.
 - Basic DASH `.mpd` support for single-representation fragmented MP4 streams using `SegmentTemplate` or `SegmentList`.
+- DASH `SegmentBase` support for single-file MP4 representations with `Initialization` byte ranges.
+- DASH representation selection now reads representation or adaptation `width`, `height`, and `codecs`, preferring higher resolution before bandwidth and reporting the selected representation details.
+- DASH parsing now honors MPD, Period, AdaptationSet, and Representation `BaseURL` hierarchy and skips audio-only AdaptationSet or Representation candidates before selecting the video stream.
 - DASH downloads write init + media segments into `.mp4` and keep a checkpoint for resumable segment progress.
 
 ## Not Yet Ported From Desktop

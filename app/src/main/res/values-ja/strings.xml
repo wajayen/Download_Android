@@ -4,6 +4,10 @@
     <string name="hint_url">curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...&#10;User-Agent: Mozilla/5.0 ...</string>
     <string name="hint_file_name">ファイル名（任意）</string>
     <string name="action_download">ダウンロード</string>
+    <string name="action_open_menu">メニューを開く</string>
+    <string name="action_open_settings">設定を開く</string>
+    <string name="section_download_queue">ダウンロードキュー</string>
+    <string name="section_new_download">新規ダウンロード</string>
     <string name="label_language">言語</string>
     <string name="language_system">システム設定</string>
     <string name="language_english">English</string>
@@ -80,9 +84,9 @@
     <string name="engine_cancelled_keep_hls_partial">キャンセルしました。HLS 部分ファイルを保持します</string>
     <string name="engine_cancelled_keep_dash_partial">キャンセルしました。DASH 部分ファイルを保持します</string>
     <string name="engine_downloading_hls_segment">HLS セグメントをダウンロード中 %1$d / %2$d</string>
-    <string name="engine_dash_representation">DASH 表現 %1$s bandwidth=%2$d</string>
+    <string name="engine_dash_representation">DASH 表現 %1$s</string>
     <string name="engine_downloading_dash_segment">DASH セグメントをダウンロード中 %1$d / %2$d</string>
-    <string name="engine_hls_variant">HLS バリアントを選択しました bandwidth=%1$d</string>
+    <string name="engine_hls_variant">HLS バリアントを選択しました %1$s</string>
     <string name="error_no_media_candidate">このページで再生可能な mp4/m3u8 メディア URL が見つかりません</string>
     <string name="error_resolve_depth_exceeded">複数のプレイヤーページをたどりましたが、再生可能なメディア URL を解析できませんでした</string>
     <string name="error_unsupported_hls_key_method">未対応の HLS key 方式：%1$s</string>

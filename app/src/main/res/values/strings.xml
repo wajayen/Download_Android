@@ -4,6 +4,10 @@
     <string name="hint_url">curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...&#10;User-Agent: Mozilla/5.0 ...</string>
     <string name="hint_file_name">File name (optional)</string>
     <string name="action_download">Download</string>
+    <string name="action_open_menu">Open menu</string>
+    <string name="action_open_settings">Open settings</string>
+    <string name="section_download_queue">Download Queue</string>
+    <string name="section_new_download">New Download</string>
     <string name="label_language">Language</string>
     <string name="language_system">System default</string>
     <string name="language_english">English</string>
@@ -80,9 +84,9 @@
     <string name="engine_cancelled_keep_hls_partial">Cancelled; keeping HLS partial file</string>
     <string name="engine_cancelled_keep_dash_partial">Cancelled; keeping DASH partial file</string>
     <string name="engine_downloading_hls_segment">Downloading HLS segment %1$d / %2$d</string>
-    <string name="engine_dash_representation">DASH representation %1$s bandwidth=%2$d</string>
+    <string name="engine_dash_representation">DASH representation %1$s</string>
     <string name="engine_downloading_dash_segment">Downloading DASH segment %1$d / %2$d</string>
-    <string name="engine_hls_variant">Selected HLS variant bandwidth=%1$d</string>
+    <string name="engine_hls_variant">Selected HLS variant %1$s</string>
     <string name="error_no_media_candidate">Could not find a playable mp4/m3u8 media URL on this page</string>
     <string name="error_resolve_depth_exceeded">Could not resolve a playable media URL after following player pages</string>
     <string name="error_unsupported_hls_key_method">Unsupported HLS key method: %1$s</string>

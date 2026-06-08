@@ -1,9 +1,13 @@
 <resources>
-    <string name="app_name">下载器</string>
+    <string name="app_name">下载者</string>
     <string name="build_ready">粘贴视频地址、浏览器请求头，或受保护页面的 Copy as cURL 文本。</string>
     <string name="hint_url">curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...&#10;User-Agent: Mozilla/5.0 ...</string>
     <string name="hint_file_name">文件名（可选）</string>
     <string name="action_download">下载</string>
+    <string name="action_open_menu">打开菜单</string>
+    <string name="action_open_settings">打开设置</string>
+    <string name="section_download_queue">下载队列</string>
+    <string name="section_new_download">新增下载</string>
     <string name="label_language">语言</string>
     <string name="language_system">跟随系统</string>
     <string name="language_english">English</string>
@@ -80,9 +84,9 @@
     <string name="engine_cancelled_keep_hls_partial">已取消；保留 HLS 部分文件</string>
     <string name="engine_cancelled_keep_dash_partial">已取消；保留 DASH 部分文件</string>
     <string name="engine_downloading_hls_segment">正在下载 HLS 分片 %1$d / %2$d</string>
-    <string name="engine_dash_representation">DASH 表示 %1$s 带宽=%2$d</string>
+    <string name="engine_dash_representation">DASH 表示 %1$s</string>
     <string name="engine_downloading_dash_segment">正在下载 DASH 分片 %1$d / %2$d</string>
-    <string name="engine_hls_variant">已选择 HLS 版本 带宽=%1$d</string>
+    <string name="engine_hls_variant">已选择 HLS 版本 %1$s</string>
     <string name="error_no_media_candidate">此页面找不到可播放的 mp4/m3u8 媒体地址</string>
     <string name="error_resolve_depth_exceeded">已跟随多层播放页，仍无法解析可播放的媒体地址</string>
     <string name="error_unsupported_hls_key_method">不支持的 HLS key 方法：%1$s</string>
