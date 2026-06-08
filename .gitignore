@@ -1,0 +1,9 @@
+.gradle/
+app/build/
+build/
+*.iml
+local.properties
+
+# APKs stay local unless attached to a GitHub release by publish_github.ps1.
+dist/*.apk
+
