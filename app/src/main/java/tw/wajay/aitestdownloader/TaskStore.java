@@ -1,0 +1,694 @@
+package tw.wajay.aitestdownloader;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.net.Uri;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.util.List;
+import java.util.Locale;
+
+final class TaskStore {
+    static final String PREFS = "download_tasks";
+    private static final String KEY_TASKS = "tasks_json";
+    private static final int MAX_TASKS = 50;
+
+    static final String STATUS_QUEUED = "queued";
+    static final String STATUS_RUNNING = "running";
+    static final String STATUS_DONE = "done";
+    static final String STATUS_FAILED = "failed";
+    static final String STATUS_CANCELLED = "cancelled";
+
+    private final SharedPreferences prefs;
+
+    static final class CandidateOption {
+        final String taskId;
+        final int index;
+        final String url;
+        final String label;
+
+        CandidateOption(String taskId, int index, String url, String label) {
+            this.taskId = taskId;
+            this.index = index;
+            this.url = url;
+            this.label = label;
+        }
+
+        @Override
+        public String toString() {
+            return label;
+        }
+    }
+
+    TaskStore(Context context) {
+        prefs = context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    synchronized int recoverInterruptedTasks() {
+        JSONArray tasks = loadTasks();
+        int recovered = 0;
+        for (int i = 0; i < tasks.length(); i++) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null || !STATUS_RUNNING.equals(task.optString("status"))) {
+                continue;
+            }
+            try {
+                task.put("status", STATUS_QUEUED);
+                task.put("message", "Recovered after service restart");
+                task.put("updatedAt", System.currentTimeMillis());
+                recovered++;
+            } catch (JSONException error) {
+                throw new IllegalStateException(error);
+            }
+        }
+        if (recovered > 0) {
+            saveTasks(tasks);
+        }
+        return recovered;
+    }
+
+    synchronized JSONObject enqueue(String url, String fileName) {
+        JSONArray tasks = loadTasks();
+        JSONObject task = new JSONObject();
+        try {
+            task.put("id", "T" + System.currentTimeMillis());
+            task.put("url", url);
+            task.put("fileName", fileName);
+            task.put("status", STATUS_QUEUED);
+            task.put("message", "等待下載");
+            task.put("output", "");
+            task.put("downloaded", 0L);
+            task.put("total", -1L);
+            task.put("createdAt", System.currentTimeMillis());
+            task.put("updatedAt", System.currentTimeMillis());
+            tasks.put(task);
+            saveTasks(trimmed(tasks));
+        } catch (JSONException error) {
+            throw new IllegalStateException(error);
+        }
+        return task;
+    }
+
+    synchronized JSONObject nextRunnable() {
+        JSONArray tasks = loadTasks();
+        for (int i = 0; i < tasks.length(); i++) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task != null && STATUS_QUEUED.equals(task.optString("status"))) {
+                return task;
+            }
+        }
+        return null;
+    }
+
+    synchronized void markRunning(String id) {
+        updateTask(id, STATUS_RUNNING, "下載中", null, -1L, -1L, null);
+    }
+
+    synchronized void status(String id, String status) {
+        updateTask(id, null, status, null, -1L, -1L, null);
+    }
+
+    synchronized void progress(String id, long downloaded, long total) {
+        updateTask(id, STATUS_RUNNING, "下載中", null, downloaded, total, null);
+    }
+
+    synchronized void resolved(String id, String sourceSite, String targetUrl, List<String> candidates, List<String> candidateLabels) {
+        int candidateCount = candidates == null ? 0 : candidates.size();
+        JSONArray tasks = loadTasks();
+        for (int i = 0; i < tasks.length(); i++) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null || !id.equals(task.optString("id"))) {
+                continue;
+            }
+            try {
+                task.put("sourceSite", sourceSite == null ? "" : sourceSite);
+                task.put("resolvedUrl", targetUrl == null ? "" : targetUrl);
+                task.put("candidateCount", candidateCount);
+                task.put("candidateUrls", candidateArray(candidates));
+                if (candidateLabels != null && !candidateLabels.isEmpty()) {
+                    task.put("candidateLabels", candidateArray(candidateLabels));
+                }
+                task.put("updatedAt", System.currentTimeMillis());
+            } catch (JSONException jsonError) {
+                throw new IllegalStateException(jsonError);
+            }
+            break;
+        }
+        saveTasks(tasks);
+    }
+
+    private JSONArray candidateArray(List<String> candidates) {
+        JSONArray array = new JSONArray();
+        if (candidates == null) {
+            return array;
+        }
+        int limit = Math.min(12, candidates.size());
+        for (int i = 0; i < limit; i++) {
+            String candidate = candidates.get(i);
+            if (candidate != null && !candidate.trim().isEmpty()) {
+                array.put(candidate);
+            }
+        }
+        return array;
+    }
+
+    synchronized void done(String id, String output) {
+        updateTask(id, STATUS_DONE, "下載完成", output, -1L, -1L, null);
+    }
+
+    synchronized void failed(String id, String message) {
+        updateTask(id, STATUS_FAILED, "下載失敗：" + message, null, -1L, -1L, message);
+    }
+
+    synchronized void cancelled(String id) {
+        updateTask(id, STATUS_CANCELLED, "已取消", null, -1L, -1L, null);
+    }
+
+    synchronized void cancelRunningOrQueued() {
+        JSONArray tasks = loadTasks();
+        for (int i = 0; i < tasks.length(); i++) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null) {
+                continue;
+            }
+            String status = task.optString("status");
+            if (STATUS_RUNNING.equals(status) || STATUS_QUEUED.equals(status)) {
+                try {
+                    task.put("status", STATUS_CANCELLED);
+                    task.put("message", "已取消");
+                    task.put("updatedAt", System.currentTimeMillis());
+                } catch (JSONException error) {
+                    throw new IllegalStateException(error);
+                }
+            }
+        }
+        saveTasks(tasks);
+    }
+
+    synchronized JSONObject retryLatestFailedOrCancelled() {
+        JSONArray tasks = loadTasks();
+        for (int i = tasks.length() - 1; i >= 0; i--) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null) {
+                continue;
+            }
+            String status = task.optString("status");
+            if (!STATUS_FAILED.equals(status) && !STATUS_CANCELLED.equals(status)) {
+                continue;
+            }
+            try {
+                task.put("status", STATUS_QUEUED);
+                task.put("message", "Queued for retry");
+                task.put("downloaded", 0L);
+                task.put("total", -1L);
+                task.put("error", "");
+                task.put("updatedAt", System.currentTimeMillis());
+            } catch (JSONException error) {
+                throw new IllegalStateException(error);
+            }
+            saveTasks(tasks);
+            return task;
+        }
+        return null;
+    }
+
+    synchronized JSONObject retryNextCandidate() {
+        JSONArray tasks = loadTasks();
+        for (int i = tasks.length() - 1; i >= 0; i--) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null) {
+                continue;
+            }
+            JSONArray candidateUrls = task.optJSONArray("candidateUrls");
+            if (candidateUrls == null || candidateUrls.length() < 2) {
+                continue;
+            }
+            String nextUrl = nextCandidateUrl(task, candidateUrls);
+            if (nextUrl.isEmpty()) {
+                continue;
+            }
+            try {
+                task.put("url", nextUrl);
+                task.put("status", STATUS_QUEUED);
+                task.put("message", "Queued alternate source");
+                task.put("resolvedUrl", nextUrl);
+                task.put("downloaded", 0L);
+                task.put("total", -1L);
+                task.put("output", "");
+                task.put("error", "");
+                task.put("updatedAt", System.currentTimeMillis());
+            } catch (JSONException error) {
+                throw new IllegalStateException(error);
+            }
+            saveTasks(tasks);
+            return task;
+        }
+        return null;
+    }
+
+    private String nextCandidateUrl(JSONObject task, JSONArray candidateUrls) {
+        String current = task.optString("resolvedUrl", "");
+        if (current.isEmpty()) {
+            current = task.optString("url", "");
+        }
+        int currentIndex = -1;
+        for (int i = 0; i < candidateUrls.length(); i++) {
+            if (current.equals(candidateUrls.optString(i, ""))) {
+                currentIndex = i;
+                break;
+            }
+        }
+        int start = currentIndex < 0 ? 0 : currentIndex + 1;
+        for (int offset = 0; offset < candidateUrls.length(); offset++) {
+            int index = (start + offset) % candidateUrls.length();
+            String candidate = candidateUrls.optString(index, "");
+            if (!candidate.isEmpty() && !candidate.equals(current)) {
+                return candidate;
+            }
+        }
+        return "";
+    }
+
+    synchronized List<CandidateOption> latestCandidateOptions() {
+        JSONArray tasks = loadTasks();
+        for (int i = tasks.length() - 1; i >= 0; i--) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null) {
+                continue;
+            }
+            JSONArray candidateUrls = task.optJSONArray("candidateUrls");
+            if (candidateUrls == null || candidateUrls.length() == 0) {
+                continue;
+            }
+            JSONArray candidateLabels = task.optJSONArray("candidateLabels");
+            List<CandidateOption> options = new java.util.ArrayList<>();
+            String taskId = task.optString("id", "");
+            String current = task.optString("resolvedUrl", "");
+            String sourceSite = task.optString("sourceSite", "");
+            for (int c = 0; c < candidateUrls.length(); c++) {
+                String url = candidateUrls.optString(c, "");
+                if (url.isEmpty()) {
+                    continue;
+                }
+                String marker = url.equals(current) ? " current" : "";
+                String resolverLabel = candidateLabels == null ? "" : candidateLabels.optString(c, "");
+                options.add(new CandidateOption(taskId, c, url, candidateLabel(c + 1, marker, sourceSite, url, resolverLabel)));
+            }
+            if (!options.isEmpty()) {
+                return options;
+            }
+        }
+        return new java.util.ArrayList<>();
+    }
+
+    synchronized JSONObject retryCandidate(String taskId, String selectedUrl) {
+        if (taskId == null || taskId.isEmpty() || selectedUrl == null || selectedUrl.isEmpty()) {
+            return null;
+        }
+        JSONArray tasks = loadTasks();
+        for (int i = tasks.length() - 1; i >= 0; i--) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null || !taskId.equals(task.optString("id"))) {
+                continue;
+            }
+            JSONArray candidateUrls = task.optJSONArray("candidateUrls");
+            if (!containsCandidate(candidateUrls, selectedUrl)) {
+                return null;
+            }
+            try {
+                task.put("url", selectedUrl);
+                task.put("status", STATUS_QUEUED);
+                task.put("message", "Queued selected source");
+                task.put("resolvedUrl", selectedUrl);
+                task.put("downloaded", 0L);
+                task.put("total", -1L);
+                task.put("output", "");
+                task.put("error", "");
+                task.put("updatedAt", System.currentTimeMillis());
+            } catch (JSONException error) {
+                throw new IllegalStateException(error);
+            }
+            saveTasks(tasks);
+            return task;
+        }
+        return null;
+    }
+
+    private boolean containsCandidate(JSONArray candidateUrls, String selectedUrl) {
+        if (candidateUrls == null) {
+            return false;
+        }
+        for (int i = 0; i < candidateUrls.length(); i++) {
+            if (selectedUrl.equals(candidateUrls.optString(i, ""))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String shortUrl(String url) {
+        Uri uri = Uri.parse(url);
+        String host = uri.getHost() == null ? "" : uri.getHost();
+        String path = uri.getPath() == null ? "" : uri.getPath();
+        String value = host + path;
+        if (value.isEmpty()) {
+            value = url;
+        }
+        return value.length() > 72 ? value.substring(0, 72) + "..." : value;
+    }
+
+    private String candidateLabel(int index, String marker, String sourceSite, String url, String resolverLabel) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("Source ").append(index).append(marker);
+        String tags = candidateTags(sourceSite, url);
+        if (!tags.isEmpty()) {
+            builder.append(" [").append(tags).append("]");
+        }
+        String cleanedLabel = compactLabel(resolverLabel);
+        if (!cleanedLabel.isEmpty()) {
+            builder.append(" ").append(cleanedLabel);
+        }
+        builder.append(" - ").append(shortUrl(url));
+        return builder.toString();
+    }
+
+    private String compactLabel(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String cleaned = raw.replaceAll("\\s+", " ").trim();
+        return cleaned.length() > 40 ? cleaned.substring(0, 40) : cleaned;
+    }
+
+    private String candidateTags(String sourceSite, String url) {
+        String lowered = url == null ? "" : url.toLowerCase(Locale.US);
+        StringBuilder tags = new StringBuilder();
+        appendTag(tags, mediaKind(lowered));
+        appendTag(tags, qualityTag(lowered));
+        appendTag(tags, episodeTag(lowered));
+        appendTag(tags, hostSourceTag(lowered));
+        appendTag(tags, normalizedSourceSite(sourceSite));
+        return tags.toString();
+    }
+
+    private String mediaKind(String loweredUrl) {
+        if (loweredUrl.contains(".m3u8")) {
+            return "HLS";
+        }
+        if (loweredUrl.contains(".mpd")) {
+            return "DASH";
+        }
+        if (loweredUrl.contains(".mp4")) {
+            return "MP4";
+        }
+        if (loweredUrl.contains(".webm")) {
+            return "WEBM";
+        }
+        if (loweredUrl.contains(".m4v")) {
+            return "M4V";
+        }
+        if (loweredUrl.contains("/player") || loweredUrl.contains("/parse") || loweredUrl.contains("/play/") || loweredUrl.contains("/vodplay/")) {
+            return "PLAYER";
+        }
+        return "";
+    }
+
+    private String qualityTag(String loweredUrl) {
+        java.util.regex.Matcher pMatcher = java.util.regex.Pattern.compile("(?<!\\d)(2160|1440|1080|720|480|360)p?(?!\\d)").matcher(loweredUrl);
+        if (pMatcher.find()) {
+            return pMatcher.group(1) + "p";
+        }
+        java.util.regex.Matcher sizeMatcher = java.util.regex.Pattern.compile("(?<!\\d)(3840x2160|2560x1440|1920x1080|1280x720|854x480|640x360)(?!\\d)").matcher(loweredUrl);
+        if (sizeMatcher.find()) {
+            String size = sizeMatcher.group(1);
+            if (size.endsWith("2160")) {
+                return "2160p";
+            }
+            if (size.endsWith("1440")) {
+                return "1440p";
+            }
+            if (size.endsWith("1080")) {
+                return "1080p";
+            }
+            if (size.endsWith("720")) {
+                return "720p";
+            }
+            if (size.endsWith("480")) {
+                return "480p";
+            }
+            if (size.endsWith("360")) {
+                return "360p";
+            }
+        }
+        return "";
+    }
+
+    private String episodeTag(String loweredUrl) {
+        java.util.regex.Matcher epMatcher = java.util.regex.Pattern.compile("(?:/|[-_])ep(?:isode)?[-_ ]?(\\d+)(?:\\D|$)").matcher(loweredUrl);
+        if (epMatcher.find()) {
+            return "EP" + epMatcher.group(1);
+        }
+        java.util.regex.Matcher playMatcher = java.util.regex.Pattern.compile("/(?:vod)?play/(?:id/)?\\d+/(?:sid/)?\\d+/(?:nid/)?(\\d+)").matcher(loweredUrl);
+        if (playMatcher.find()) {
+            return "EP" + playMatcher.group(1);
+        }
+        java.util.regex.Matcher htmlMatcher = java.util.regex.Pattern.compile("/(?:play/)?\\d+/(?:\\d+[-_])?(\\d+)\\.html").matcher(loweredUrl);
+        if (htmlMatcher.find()) {
+            return "EP" + htmlMatcher.group(1);
+        }
+        java.util.regex.Matcher dashMatcher = java.util.regex.Pattern.compile("(?:episode|ep|part|seg|segment)[-_]?(\\d+)").matcher(loweredUrl);
+        if (dashMatcher.find()) {
+            return "EP" + dashMatcher.group(1);
+        }
+        return "";
+    }
+
+    private String hostSourceTag(String loweredUrl) {
+        String[][] markers = new String[][]{
+                {"xluuss", "XLU"},
+                {"lzcdn", "LZ"},
+                {"hhuus", "HH"},
+                {"qsstvw", "QSS"},
+                {"gsuus", "GS"},
+                {"bfllvip", "BFL"},
+                {"ppqrrs", "PPQ"},
+                {"qqqrst", "QQQ"},
+                {"vodcnd", "VODCND"},
+                {"phimgood", "PHIM"},
+                {"ryiplay", "RYI"},
+                {"huyall", "HUYA"},
+                {"ijycnd", "IJY"},
+                {"jisuzyv", "JISU"},
+                {"taopianplay1", "TAOPIAN"},
+                {"animevideo.php", "AniGamer"},
+                {"anime1", "Anime1"},
+                {"777tv", "777TV"},
+                {"99itv", "99iTV"},
+                {"nnyy", "NNYY"},
+                {"olevod", "Olevod"},
+                {"olehdtv", "OleHDTV"},
+                {"dramasq", "DramaSQ"},
+                {"thanju", "Thanju"},
+                {"3kor", "3KOR"},
+                {"dmcdn.net", "DMCDN"},
+                {"dailymotion", "Dailymotion"},
+                {"googlevideo", "GoogleVideo"},
+                {"youtube", "YouTube"},
+                {"bilivideo", "BiliVideo"},
+                {"bilibili", "Bilibili"},
+                {"iqiyi", "iQIYI"},
+                {"qiyi", "iQIYI"},
+                {"ikanbot", "Ikanbot"},
+                {"yfsp", "YFSP"}
+        };
+        for (String[] marker : markers) {
+            if (loweredUrl.contains(marker[0])) {
+                return marker[1];
+            }
+        }
+        return "";
+    }
+
+    private String normalizedSourceSite(String sourceSite) {
+        if (sourceSite == null || sourceSite.trim().isEmpty() || "generic".equals(sourceSite)) {
+            return "";
+        }
+        return sourceSite.trim();
+    }
+
+    private void appendTag(StringBuilder tags, String value) {
+        if (value == null || value.isEmpty()) {
+            return;
+        }
+        if (tags.length() > 0) {
+            tags.append(' ');
+        }
+        tags.append(value);
+    }
+
+    synchronized int clearFinishedTasks() {
+        JSONArray tasks = loadTasks();
+        JSONArray kept = new JSONArray();
+        int cleared = 0;
+        for (int i = 0; i < tasks.length(); i++) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null) {
+                continue;
+            }
+            String status = task.optString("status");
+            if (STATUS_DONE.equals(status) || STATUS_FAILED.equals(status) || STATUS_CANCELLED.equals(status)) {
+                cleared++;
+                continue;
+            }
+            kept.put(task);
+        }
+        if (cleared > 0) {
+            saveTasks(kept);
+        }
+        return cleared;
+    }
+
+    synchronized String summary() {
+        JSONArray tasks = loadTasks();
+        if (tasks.length() == 0) {
+            return "尚未開始下載";
+        }
+        StringBuilder builder = new StringBuilder();
+        int start = Math.max(0, tasks.length() - 6);
+        for (int i = tasks.length() - 1; i >= start; i--) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append("\n\n");
+            }
+            builder.append(task.optString("id")).append("  ");
+            builder.append(label(task.optString("status"))).append('\n');
+            builder.append(task.optString("fileName", "download.bin"));
+            long downloaded = task.optLong("downloaded", 0L);
+            long total = task.optLong("total", -1L);
+            if (total > 0L) {
+                builder.append('\n').append(String.format(Locale.US, "%.1f%%", downloaded * 100.0 / total));
+            } else if (downloaded > 0L) {
+                builder.append('\n').append(downloaded).append(" bytes");
+            }
+            String output = task.optString("output", "");
+            if (!output.isEmpty()) {
+                builder.append('\n').append(output);
+            }
+            String resolvedUrl = task.optString("resolvedUrl", "");
+            if (!resolvedUrl.isEmpty()) {
+                builder.append('\n')
+                        .append("resolved ")
+                        .append(task.optString("sourceSite", "generic"))
+                        .append(" candidates=")
+                        .append(task.optInt("candidateCount", 1));
+                builder.append('\n').append(resolvedUrl);
+                JSONArray candidateUrls = task.optJSONArray("candidateUrls");
+                if (candidateUrls != null && candidateUrls.length() > 1) {
+                    int preview = Math.min(3, candidateUrls.length());
+                    for (int c = 0; c < preview; c++) {
+                        String candidate = candidateUrls.optString(c, "");
+                        if (!candidate.isEmpty()) {
+                            builder.append('\n').append("candidate ").append(c + 1).append(": ").append(candidate);
+                        }
+                    }
+                    if (candidateUrls.length() > preview) {
+                        builder.append('\n').append("candidate ... +").append(candidateUrls.length() - preview);
+                    }
+                }
+            }
+            String message = task.optString("message", "");
+            if (!message.isEmpty() && !message.equals(label(task.optString("status")))) {
+                builder.append('\n').append(message);
+            }
+        }
+        return builder.toString();
+    }
+
+    private void updateTask(String id, String status, String message, String output, long downloaded, long total, String error) {
+        JSONArray tasks = loadTasks();
+        for (int i = 0; i < tasks.length(); i++) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null || !id.equals(task.optString("id"))) {
+                continue;
+            }
+            try {
+                if (status != null) {
+                    task.put("status", status);
+                }
+                if (message != null) {
+                    task.put("message", message);
+                }
+                if (output != null) {
+                    task.put("output", output);
+                }
+                if (downloaded >= 0L) {
+                    task.put("downloaded", downloaded);
+                }
+                if (total >= 0L) {
+                    task.put("total", total);
+                }
+                if (error != null) {
+                    task.put("error", error);
+                }
+                task.put("updatedAt", System.currentTimeMillis());
+            } catch (JSONException jsonError) {
+                throw new IllegalStateException(jsonError);
+            }
+            break;
+        }
+        saveTasks(tasks);
+    }
+
+    private JSONArray loadTasks() {
+        String raw = prefs.getString(KEY_TASKS, "[]");
+        try {
+            return new JSONArray(raw);
+        } catch (JSONException ignored) {
+            return new JSONArray();
+        }
+    }
+
+    private void saveTasks(JSONArray tasks) {
+        prefs.edit().putString(KEY_TASKS, tasks.toString()).apply();
+    }
+
+    private JSONArray trimmed(JSONArray tasks) {
+        if (tasks.length() <= MAX_TASKS) {
+            return tasks;
+        }
+        JSONArray trimmed = new JSONArray();
+        int start = tasks.length() - MAX_TASKS;
+        for (int i = start; i < tasks.length(); i++) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task != null) {
+                trimmed.put(task);
+            }
+        }
+        return trimmed;
+    }
+
+    private String label(String status) {
+        if (STATUS_QUEUED.equals(status)) {
+            return "等待中";
+        }
+        if (STATUS_RUNNING.equals(status)) {
+            return "下載中";
+        }
+        if (STATUS_DONE.equals(status)) {
+            return "下載完成";
+        }
+        if (STATUS_FAILED.equals(status)) {
+            return "下載失敗";
+        }
+        if (STATUS_CANCELLED.equals(status)) {
+            return "已取消";
+        }
+        return status == null ? "" : status;
+    }
+}
