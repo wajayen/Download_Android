@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -28,10 +29,12 @@ public final class DownloadService extends Service {
     static final String EXTRA_REFERER = "referer";
     static final String EXTRA_COOKIE_HEADER = "cookie_header";
     static final String EXTRA_HEADERS_JSON = "headers_json";
+    static final String EXTRA_PLAY_AFTER_THRESHOLD = "play_after_threshold";
 
     private static final String CHANNEL_ID = "downloads";
     private static final int NOTIFICATION_ID = 42;
     private static final int MAX_CONCURRENT_DOWNLOADS = 2;
+    private static final long PLAY_THRESHOLD_BYTES = 50L * 1024L * 1024L;
 
     private NotificationManager notificationManager;
     private TaskStore taskStore;
@@ -52,6 +55,10 @@ public final class DownloadService extends Service {
     }
 
     static Intent startIntent(Context context, String url, String fileName, String referer, String cookieHeader, String headersJson) {
+        return startIntent(context, url, fileName, referer, cookieHeader, headersJson, false);
+    }
+
+    static Intent startIntent(Context context, String url, String fileName, String referer, String cookieHeader, String headersJson, boolean playAfterThreshold) {
         Intent intent = new Intent(context, DownloadService.class);
         intent.setAction(ACTION_START);
         intent.putExtra(EXTRA_URL, url);
@@ -59,6 +66,7 @@ public final class DownloadService extends Service {
         intent.putExtra(EXTRA_REFERER, referer == null ? "" : referer);
         intent.putExtra(EXTRA_COOKIE_HEADER, cookieHeader == null ? "" : cookieHeader);
         intent.putExtra(EXTRA_HEADERS_JSON, headersJson == null ? "{}" : headersJson);
+        intent.putExtra(EXTRA_PLAY_AFTER_THRESHOLD, playAfterThreshold);
         return intent;
     }
 
@@ -80,6 +88,7 @@ public final class DownloadService extends Service {
         notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         taskStore = new TaskStore(this);
         eventLog = new EventLog(this);
+        taskStore.clearCompletedTasks();
         int recovered = taskStore.recoverInterruptedTasks();
         if (recovered > 0) {
             eventLog.write("recovered", "", "running tasks requeued=" + recovered);
@@ -111,6 +120,7 @@ public final class DownloadService extends Service {
             String referer = intent.getStringExtra(EXTRA_REFERER);
             String cookieHeader = intent.getStringExtra(EXTRA_COOKIE_HEADER);
             String headersJson = intent.getStringExtra(EXTRA_HEADERS_JSON);
+            boolean playAfterThreshold = intent.getBooleanExtra(EXTRA_PLAY_AFTER_THRESHOLD, false);
             if (url == null || url.trim().isEmpty()) {
                 stopSelf(startId);
                 return START_NOT_STICKY;
@@ -119,7 +129,7 @@ public final class DownloadService extends Service {
             if (fileName == null || fileName.trim().isEmpty()) {
                 fileName = FileNames.choose(Uri.parse(url), "");
             }
-            JSONObject task = taskStore.enqueue(url, fileName, referer, cookieHeader, headersJson);
+            JSONObject task = taskStore.enqueue(url, fileName, referer, cookieHeader, headersJson, playAfterThreshold);
             eventLog.write("queued", task.optString("id"), url);
             startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.notification_download_queued), 0, 0, true));
             startNextAvailable();
@@ -209,13 +219,15 @@ public final class DownloadService extends Service {
             String referer = task.optString("referer", "");
             String cookieHeader = task.optString("cookieHeader", "");
             String headersJson = task.optString("headersJson", "{}");
+            boolean playAfterThreshold = task.optBoolean("playAfterThreshold", false);
+            boolean playbackStarted = task.optBoolean("playbackStarted", false);
             DownloadEngine engine = new DownloadEngine(this);
             activeEngines.put(taskId, engine);
             taskStore.markRunning(taskId);
             eventLog.write("started", taskId, url);
             eventLog.write("concurrency", taskId, "active=" + activeEngines.size() + "/" + MAX_CONCURRENT_DOWNLOADS);
             updateNotification(getString(R.string.notification_downloading_slots, activeEngines.size(), MAX_CONCURRENT_DOWNLOADS), 0L, 0L, true);
-            engine.start(url, fileName, referer, cookieHeader, headersJson, new ServiceCallback(taskId));
+            engine.start(url, fileName, referer, cookieHeader, headersJson, new ServiceCallback(taskId, fileName, playAfterThreshold, playbackStarted));
         }
 
         if (activeEngines.isEmpty() && taskStore.nextRunnable() == null) {
@@ -233,9 +245,15 @@ public final class DownloadService extends Service {
 
     private final class ServiceCallback implements DownloadEngine.Callback {
         private final String taskId;
+        private final String fileName;
+        private final boolean playAfterThreshold;
+        private boolean playbackStarted;
 
-        ServiceCallback(String taskId) {
+        ServiceCallback(String taskId, String fileName, boolean playAfterThreshold, boolean playbackStarted) {
             this.taskId = taskId;
+            this.fileName = fileName == null ? "download.bin" : fileName;
+            this.playAfterThreshold = playAfterThreshold;
+            this.playbackStarted = playbackStarted;
         }
 
         @Override
@@ -260,6 +278,7 @@ public final class DownloadService extends Service {
         @Override
         public void onProgress(long downloaded, long total) {
             taskStore.progress(taskId, downloaded, total);
+            maybeStartPlayback();
             updateNotification(getString(R.string.notification_downloading_progress, formatProgress(downloaded, total)), downloaded, total, true);
         }
 
@@ -303,6 +322,74 @@ public final class DownloadService extends Service {
                 builder.append(" | ...");
             }
             return builder.toString();
+        }
+
+        private void maybeStartPlayback() {
+            if (!playAfterThreshold || playbackStarted) {
+                return;
+            }
+            File partial = playablePartialFile(fileName);
+            if (partial == null || partial.length() < PLAY_THRESHOLD_BYTES) {
+                return;
+            }
+            Uri playbackUri = PartialFileProvider.contentUriFor(DownloadService.this, partial, playableDisplayName(partial.getName()));
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(playbackUri, mimeType(partial.getName()));
+            intent.setClipData(ClipData.newUri(getContentResolver(), partial.getName(), playbackUri));
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                startActivity(intent);
+                playbackStarted = true;
+                eventLog.write("playback_started", taskId, partial.getAbsolutePath());
+                taskStore.playbackStarted(taskId, getString(R.string.task_message_playback_started));
+                updateNotification(getString(R.string.notification_playback_started), partial.length(), 0L, true);
+            } catch (Exception error) {
+                playbackStarted = true;
+                eventLog.write("playback_failed", taskId, error.getMessage() == null ? error.toString() : error.getMessage());
+                taskStore.playbackStarted(taskId, getString(R.string.task_message_playback_unavailable));
+            }
+        }
+
+        private String playableDisplayName(String partialName) {
+            String clean = FileNames.sanitize(partialName);
+            if (clean.endsWith(".part")) {
+                clean = clean.substring(0, clean.length() - 5);
+            }
+            return clean.isEmpty() ? fileName : clean;
+        }
+
+        private File playablePartialFile(String baseName) {
+            File dir = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);
+            if (dir == null) {
+                dir = getFilesDir();
+            }
+            String[] names = new String[]{
+                    baseName + ".part",
+                    FileNames.replaceExtension(baseName, ".ts") + ".part",
+                    FileNames.replaceExtension(baseName, ".mp4") + ".part"
+            };
+            File best = null;
+            for (String name : names) {
+                File candidate = new File(dir, name);
+                if (candidate.exists() && candidate.length() > 0L && (best == null || candidate.length() > best.length())) {
+                    best = candidate;
+                }
+            }
+            return best;
+        }
+
+        private String mimeType(String name) {
+            String lowered = name == null ? "" : name.toLowerCase(Locale.US);
+            if (lowered.contains(".mp4") || lowered.contains(".m4v")) {
+                return "video/mp4";
+            }
+            if (lowered.contains(".webm")) {
+                return "video/webm";
+            }
+            if (lowered.contains(".ts")) {
+                return "video/mp2t";
+            }
+            return "video/*";
         }
     }
 }

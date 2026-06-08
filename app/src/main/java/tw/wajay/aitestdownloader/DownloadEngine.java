@@ -786,6 +786,7 @@ final class DownloadEngine {
         }
         long contentLength = connection.getContentLengthLong();
         long total = contentLength > 0L ? existing + contentLength : -1L;
+        String contentDisposition = connection.getHeaderField("Content-Disposition");
 
         try (InputStream input = new BufferedInputStream(connection.getInputStream());
              FileOutputStream fos = new FileOutputStream(part, canResume);
@@ -798,6 +799,10 @@ final class DownloadEngine {
         if (cancelled.get()) {
             callback.onStatus(context.getString(R.string.engine_cancelled_keep_partial));
             return;
+        }
+        String headerName = FileNames.fromContentDisposition(contentDisposition);
+        if (!headerName.isEmpty()) {
+            output = uniqueOutputFile(headerName);
         }
         replace(part, output);
         if (state.exists()) {
@@ -2108,6 +2113,25 @@ final class DownloadEngine {
             dir.mkdirs();
         }
         return new File(dir, fileName);
+    }
+
+    private File uniqueOutputFile(String fileName) {
+        File target = outputFile(fileName);
+        if (!target.exists()) {
+            return target;
+        }
+        String safeName = target.getName();
+        int dot = safeName.lastIndexOf('.');
+        String stem = dot > 0 ? safeName.substring(0, dot) : safeName;
+        String extension = dot > 0 ? safeName.substring(dot) : "";
+        File directory = target.getParentFile();
+        for (int i = 2; i < 1000; i++) {
+            File candidate = new File(directory, stem + " (" + i + ")" + extension);
+            if (!candidate.exists()) {
+                return candidate;
+            }
+        }
+        return new File(directory, stem + " (" + System.currentTimeMillis() + ")" + extension);
     }
 
     private void replace(File part, File output) throws IOException {

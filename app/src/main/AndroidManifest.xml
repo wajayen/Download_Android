@@ -15,6 +15,12 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <provider
+            android:name=".PartialFileProvider"
+            android:authorities="${applicationId}.partialfileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true">

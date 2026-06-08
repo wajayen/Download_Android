@@ -50,6 +50,7 @@ public final class MainActivity extends Activity {
     private EditText urlInput;
     private EditText fileNameInput;
     private Spinner sourceSpinner;
+    private Button selectedSourceButton;
     private TextView statusText;
     private TaskStore taskStore;
     private List<TaskStore.CandidateOption> sourceOptions = new ArrayList<>();
@@ -77,6 +78,7 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         taskStore = new TaskStore(this);
+        taskStore.clearCompletedTasks();
         setContentView(createContentView());
         hydrateSharedText(getIntent());
         requestNotificationPermission();
@@ -151,6 +153,12 @@ public final class MainActivity extends Activity {
         downloadButton.setOnClickListener(view -> startDownload());
         inputPanel.addView(downloadButton, matchWrap());
 
+        Button playAfterButton = new Button(this);
+        playAfterButton.setText(getString(R.string.action_play_after_50mb));
+        styleSecondaryButton(playAfterButton);
+        playAfterButton.setOnClickListener(view -> startDownload(true));
+        inputPanel.addView(playAfterButton, matchWrap());
+
         TextView queueTitle = new TextView(this);
         queueTitle.setText(getString(R.string.section_download_queue));
         styleSectionTitle(queueTitle);
@@ -173,11 +181,13 @@ public final class MainActivity extends Activity {
         sourceSpinner = new Spinner(this);
         queueCard.addView(sourceSpinner, matchWrap());
 
-        Button selectedSourceButton = new Button(this);
+        selectedSourceButton = new Button(this);
         selectedSourceButton.setText(getString(R.string.action_queue_selected_source));
         styleSecondaryButton(selectedSourceButton);
         selectedSourceButton.setOnClickListener(view -> retrySelectedSource());
         queueCard.addView(selectedSourceButton, matchWrap());
+        sourceSpinner.setVisibility(View.GONE);
+        selectedSourceButton.setVisibility(View.GONE);
 
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(BACKGROUND);
@@ -308,6 +318,10 @@ public final class MainActivity extends Activity {
     }
 
     private void startDownload() {
+        startDownload(false);
+    }
+
+    private void startDownload(boolean playAfterThreshold) {
         BrowserRequestContext requestContext = parseBrowserRequestContext(urlInput.getText().toString());
         List<String> urls = requestContext.urls;
         if (urls.isEmpty()) {
@@ -320,31 +334,35 @@ public final class MainActivity extends Activity {
             if (fileName.isEmpty()) {
                 fileName = FileNames.sanitize(query) + ".mp4";
             }
-            startDownloaderService(DownloadService.startIntent(this, VideoSearchResolver.searchUri(query), fileName, "", "", "{}"));
-            statusText.setText(getString(R.string.status_search_queued, query));
+            startDownloaderService(DownloadService.startIntent(this, VideoSearchResolver.searchUri(query), fileName, "", "", "{}", playAfterThreshold));
+            statusText.setText(queueLine(fileName, 0L, -1L));
             return;
         }
 
         String requestedName = fileNameInput.getText().toString();
         int queued = 0;
         String firstName = "";
+        StringBuilder queuedPreview = new StringBuilder();
         for (String rawUrl : urls) {
             Uri uri = Uri.parse(rawUrl);
             String fileName = urls.size() == 1 ? FileNames.choose(uri, requestedName) : FileNames.choose(uri, "");
             if (queued == 0) {
                 firstName = fileName;
             }
-            startDownloaderService(DownloadService.startIntent(this, rawUrl, fileName, requestContext.referer, requestContext.cookieHeader, requestContext.headersJson));
+            if (queuedPreview.length() > 0) {
+                queuedPreview.append('\n');
+            }
+            queuedPreview.append(queueLine(fileName, 0L, -1L));
+            startDownloaderService(DownloadService.startIntent(this, rawUrl, fileName, requestContext.referer, requestContext.cookieHeader, requestContext.headersJson, playAfterThreshold));
             queued++;
         }
 
         if (urls.size() == 1) {
             fileNameInput.setText(firstName);
-            statusText.setText(getString(R.string.status_download_queued, firstName));
         } else {
             fileNameInput.setText("");
-            statusText.setText(getString(R.string.status_queued_downloads, queued));
         }
+        statusText.setText(queuedPreview.toString());
     }
 
     private BrowserRequestContext parseBrowserRequestContext(String text) {
@@ -506,7 +524,7 @@ public final class MainActivity extends Activity {
             return;
         }
         startDownloaderService(DownloadService.wakeIntent(this));
-        statusText.setText(getString(R.string.status_retry_queued, task.optString("fileName", "download.bin")));
+        refreshStatus();
     }
 
     private void retryNextSource() {
@@ -516,7 +534,7 @@ public final class MainActivity extends Activity {
             return;
         }
         startDownloaderService(DownloadService.wakeIntent(this));
-        statusText.setText(getString(R.string.status_alternate_source_queued, task.optString("fileName", "download.bin"), task.optString("url", "")));
+        refreshStatus();
     }
 
     private void retrySelectedSource() {
@@ -537,8 +555,8 @@ public final class MainActivity extends Activity {
             return;
         }
         startDownloaderService(DownloadService.wakeIntent(this));
-        statusText.setText(getString(R.string.status_selected_source_queued, task.optString("fileName", "download.bin"), option.url));
         refreshCandidateOptions();
+        refreshStatus();
     }
 
     private void clearFinishedTasks() {
@@ -588,6 +606,16 @@ public final class MainActivity extends Activity {
             return String.format(Locale.US, "%.1f KiB", kib);
         }
         return String.format(Locale.US, "%.1f MiB", kib / 1024.0);
+    }
+
+    private String queueLine(String fileName, long downloaded, long total) {
+        if (total > 0L) {
+            return fileName + "  " + String.format(Locale.US, "%.1f%%", downloaded * 100.0 / total);
+        }
+        if (downloaded > 0L) {
+            return fileName + "  " + formatBytes(downloaded);
+        }
+        return fileName + "  0%";
     }
 
     private LinearLayout.LayoutParams matchWrap() {

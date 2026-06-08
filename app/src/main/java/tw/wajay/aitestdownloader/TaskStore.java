@@ -81,6 +81,10 @@ final class TaskStore {
     }
 
     synchronized JSONObject enqueue(String url, String fileName, String referer, String cookieHeader, String headersJson) {
+        return enqueue(url, fileName, referer, cookieHeader, headersJson, false);
+    }
+
+    synchronized JSONObject enqueue(String url, String fileName, String referer, String cookieHeader, String headersJson, boolean playAfterThreshold) {
         JSONArray tasks = loadTasks();
         JSONObject task = new JSONObject();
         try {
@@ -90,6 +94,8 @@ final class TaskStore {
             task.put("referer", referer == null ? "" : referer.trim());
             task.put("cookieHeader", cookieHeader == null ? "" : cookieHeader.trim());
             task.put("headersJson", normalizeHeadersJson(headersJson));
+            task.put("playAfterThreshold", playAfterThreshold);
+            task.put("playbackStarted", false);
             task.put("status", STATUS_QUEUED);
             task.put("message", text(R.string.task_message_queued));
             task.put("output", "");
@@ -126,6 +132,27 @@ final class TaskStore {
 
     synchronized void progress(String id, long downloaded, long total) {
         updateTask(id, STATUS_RUNNING, text(R.string.task_message_running), null, downloaded, total, null);
+    }
+
+    synchronized void playbackStarted(String id, String message) {
+        JSONArray tasks = loadTasks();
+        for (int i = 0; i < tasks.length(); i++) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null || !id.equals(task.optString("id"))) {
+                continue;
+            }
+            try {
+                task.put("playbackStarted", true);
+                if (message != null && !message.isEmpty()) {
+                    task.put("message", message);
+                }
+                task.put("updatedAt", System.currentTimeMillis());
+            } catch (JSONException error) {
+                throw new IllegalStateException(error);
+            }
+            break;
+        }
+        saveTasks(tasks);
     }
 
     synchronized void resolved(String id, String sourceSite, String targetUrl, List<String> candidates, List<String> candidateLabels) {
@@ -349,42 +376,54 @@ final class TaskStore {
         return cleared;
     }
 
-    synchronized String summary() {
+    synchronized int clearCompletedTasks() {
         JSONArray tasks = loadTasks();
-        if (tasks.length() == 0) {
-            return text(R.string.task_summary_empty);
-        }
-        StringBuilder builder = new StringBuilder();
-        int start = Math.max(0, tasks.length() - 6);
-        for (int i = tasks.length() - 1; i >= start; i--) {
+        JSONArray kept = new JSONArray();
+        int cleared = 0;
+        for (int i = 0; i < tasks.length(); i++) {
             JSONObject task = tasks.optJSONObject(i);
             if (task == null) {
                 continue;
             }
-            if (builder.length() > 0) {
-                builder.append("\n\n");
+            if (STATUS_DONE.equals(task.optString("status"))) {
+                cleared++;
+                continue;
             }
-            builder.append(task.optString("id")).append("  ");
-            builder.append(label(task.optString("status"))).append('\n');
+            kept.put(task);
+        }
+        if (cleared > 0) {
+            saveTasks(kept);
+        }
+        return cleared;
+    }
+
+    synchronized String summary() {
+        JSONArray tasks = loadTasks();
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < tasks.length(); i++) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null) {
+                continue;
+            }
+            if (STATUS_DONE.equals(task.optString("status"))) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append('\n');
+            }
             builder.append(task.optString("fileName", "download.bin"));
             long downloaded = task.optLong("downloaded", 0L);
             long total = task.optLong("total", -1L);
+            builder.append("  ");
             if (total > 0L) {
-                builder.append('\n').append(String.format(Locale.US, "%.1f%%", downloaded * 100.0 / total));
+                builder.append(String.format(Locale.US, "%.1f%%", downloaded * 100.0 / total));
             } else if (downloaded > 0L) {
-                builder.append('\n').append(downloaded).append(" bytes");
-            }
-            String output = task.optString("output", "");
-            if (!output.isEmpty()) {
-                builder.append('\n').append(output);
-            }
-            appendResolvedSummary(builder, task);
-            String message = task.optString("message", "");
-            if (!message.isEmpty() && !message.equals(label(task.optString("status")))) {
-                builder.append('\n').append(message);
+                builder.append(formatBytes(downloaded));
+            } else {
+                builder.append("0%");
             }
         }
-        return builder.toString();
+        return builder.length() == 0 ? text(R.string.task_summary_empty) : builder.toString();
     }
 
     private void appendResolvedSummary(StringBuilder builder, JSONObject task) {
@@ -543,6 +582,17 @@ final class TaskStore {
             value = url;
         }
         return value.length() > 72 ? value.substring(0, 72) + "..." : value;
+    }
+
+    private String formatBytes(long bytes) {
+        if (bytes < 1024L) {
+            return bytes + " B";
+        }
+        double kib = bytes / 1024.0;
+        if (kib < 1024.0) {
+            return String.format(Locale.US, "%.1f KiB", kib);
+        }
+        return String.format(Locale.US, "%.1f MiB", kib / 1024.0);
     }
 
     private String compactLabel(String raw) {

@@ -8,10 +8,20 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Native Android UI for entering or sharing a URL.
 - Android-friendly main screen with a left hamburger menu, right overflow settings menu, and download queue centered as the primary content.
 - Main UI now uses a calm Japanese-inspired Android layout with pale surfaces, subtle borders, the new-download controls above the download queue, and large touch-friendly controls.
+- Download queue now shows only unfinished files with their current progress, hides resolved-source metadata from the queue area, and clears completed tasks on app/service startup.
+- Android UI now includes a Play after 50 MB action below Download; selected tasks keep downloading to completion while the partial file is opened in an external player once it reaches 50 MB.
+- Play after 50 MB now has dedicated multi-download queue messaging and a playback-started notification while the download continues.
+- Play after 50 MB now persists its playback-attempt state so recovered or restarted tasks do not repeatedly relaunch the external player.
+- Play after 50 MB now exposes a playable display filename to external Android players while keeping the underlying `.part` file read-only and app-scoped.
+- Play after 50 MB now records a visible four-language task message when Android cannot launch an external player, while keeping the download running.
+- Play after 50 MB now includes the playback content URI in both Intent data and ClipData, improving read-permission compatibility with external Android players.
 - Android app name and launcher icon match the Windows version: `下載者` with the Taiwan symbol icon.
 - Batch URL parsing from pasted/shared text; multiple http(s) links are queued together.
 - Download file names now receive desktop-style safety cleanup for control characters, invalid path characters, trailing dots/spaces, and Windows reserved device names before queueing or exporting.
 - Download file names now infer desktop-style names from URL query hints such as `response-content-disposition`, `filename`, `file`, and `name` before falling back to the URL path.
+- Direct HTTP downloads now use a server-provided `Content-Disposition` filename for the finalized output when available, after applying the same safe filename cleanup.
+- `Content-Disposition` `filename*=` values now decode RFC 5987 percent-encoded filenames before safe filename cleanup, improving Traditional Chinese, Japanese, and other non-ASCII output names.
+- Direct HTTP downloads avoid overwriting an existing file when a server-provided filename collides, using numbered names such as `video (2).mp4`.
 - Foreground download service and notification progress for long-running downloads.
 - Persistent JSON task queue through SharedPreferences.
 - Bounded multi-task queue execution with up to two active downloads.

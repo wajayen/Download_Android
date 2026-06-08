@@ -4,6 +4,7 @@
     <string name="hint_url">URL, video title, code, or Copy as cURL text&#10;curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...</string>
     <string name="hint_file_name">File name (optional)</string>
     <string name="action_download">Download</string>
+    <string name="action_play_after_50mb">Play after 50 MB</string>
     <string name="action_open_menu">Open menu</string>
     <string name="action_open_settings">Open settings</string>
     <string name="section_download_queue">Download Queue</string>
@@ -36,7 +37,10 @@
     <string name="toast_log_export_failed">Log export failed</string>
     <string name="status_download_queued">Download queued\n%1$s</string>
     <string name="status_search_queued">Search queued\n%1$s</string>
+    <string name="status_download_play_after_queued">Download queued; playback will start after 50 MB\n%1$s</string>
+    <string name="status_search_play_after_queued">Search queued; playback will start after 50 MB\n%1$s</string>
     <string name="status_queued_downloads">Queued %1$d downloads</string>
+    <string name="status_queued_downloads_play_after">Queued %1$d downloads; playback will start after 50 MB</string>
     <string name="status_retry_queued">Retry queued\n%1$s</string>
     <string name="status_alternate_source_queued">Alternate source queued\n%1$s\n%2$s</string>
     <string name="status_selected_source_queued">Selected source queued\n%1$s\n%2$s</string>
@@ -46,6 +50,7 @@
     <string name="task_message_queued">Queued</string>
     <string name="task_message_recovered">Recovered after service restart</string>
     <string name="task_message_running">Downloading</string>
+    <string name="task_message_playback_started">Playback started; download continues</string>
     <string name="task_message_done">Done</string>
     <string name="task_message_failed">Download failed: %1$s</string>
     <string name="task_message_cancelled">Cancelled</string>
@@ -71,6 +76,7 @@
     <string name="notification_queue_finished">Queue finished</string>
     <string name="notification_downloading_slots">Downloading %1$d/%2$d</string>
     <string name="notification_downloading_progress">Downloading %1$s</string>
+    <string name="notification_playback_started">Playback started; download continues</string>
     <string name="notification_download_complete">Download complete</string>
     <string name="notification_download_failed">Download failed</string>
     <string name="notification_action_cancel">Cancel</string>
@@ -107,4 +113,5 @@
     <string name="search_candidate_media_fallback">resolved media fallback</string>
     <string name="search_candidate_alternate">alternate search result: %1$s</string>
     <string name="search_candidate_previous">previous search result: %1$s</string>
+    <string name="task_message_playback_unavailable">Could not start a player; download continues</string>
 </resources>

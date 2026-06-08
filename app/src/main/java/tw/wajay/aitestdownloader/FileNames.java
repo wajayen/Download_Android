@@ -2,6 +2,7 @@ package tw.wajay.aitestdownloader;
 
 import android.net.Uri;
 
+import java.net.URLDecoder;
 import java.util.Locale;
 
 final class FileNames {
@@ -53,6 +54,10 @@ final class FileNames {
         return clean;
     }
 
+    static String fromContentDisposition(String value) {
+        return sanitize(contentDispositionFileName(value));
+    }
+
     private static String queryFileName(Uri uri) {
         if (uri == null || uri.isOpaque()) {
             return "";
@@ -83,8 +88,7 @@ final class FileNames {
             String name = trimmed.substring(0, equals).trim().toLowerCase(Locale.US);
             String raw = unquote(trimmed.substring(equals + 1).trim());
             if ("filename*".equals(name)) {
-                int marker = raw.indexOf("''");
-                return marker >= 0 ? raw.substring(marker + 2) : raw;
+                return decodeExtendedFileName(raw);
             }
             if ("filename".equals(name) && !raw.isEmpty()) {
                 return raw;
@@ -99,5 +103,24 @@ final class FileNames {
             return trimmed.substring(1, trimmed.length() - 1);
         }
         return trimmed;
+    }
+
+    private static String decodeExtendedFileName(String value) {
+        String raw = value == null ? "" : value.trim();
+        int marker = raw.indexOf("''");
+        String charset = marker > 0 ? raw.substring(0, marker).trim() : "UTF-8";
+        String encoded = marker >= 0 ? raw.substring(marker + 2) : raw;
+        if (encoded.isEmpty()) {
+            return "";
+        }
+        try {
+            return URLDecoder.decode(encoded, charset.isEmpty() ? "UTF-8" : charset);
+        } catch (Exception ignored) {
+            try {
+                return URLDecoder.decode(encoded, "UTF-8");
+            } catch (Exception ignoredAgain) {
+                return encoded;
+            }
+        }
     }
 }

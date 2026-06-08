@@ -4,6 +4,7 @@
     <string name="hint_url">URL、動画名、品番、または Copy as cURL テキスト&#10;curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...</string>
     <string name="hint_file_name">ファイル名（任意）</string>
     <string name="action_download">ダウンロード</string>
+    <string name="action_play_after_50mb">50MB 後に再生</string>
     <string name="action_open_menu">メニューを開く</string>
     <string name="action_open_settings">設定を開く</string>
     <string name="section_download_queue">ダウンロードキュー</string>
@@ -36,7 +37,10 @@
     <string name="toast_log_export_failed">ログの書き出しに失敗しました</string>
     <string name="status_download_queued">ダウンロード待ちに追加しました\n%1$s</string>
     <string name="status_search_queued">検索をキューに追加しました\n%1$s</string>
+    <string name="status_download_play_after_queued">ダウンロード待ちに追加しました。50MB 後に再生します\n%1$s</string>
+    <string name="status_search_play_after_queued">検索待ちに追加しました。50MB 後に再生します\n%1$s</string>
     <string name="status_queued_downloads">%1$d 件のダウンロードを追加しました</string>
+    <string name="status_queued_downloads_play_after">%1$d 件のダウンロードを追加しました。50MB 後に再生します</string>
     <string name="status_retry_queued">再試行待ちに追加しました\n%1$s</string>
     <string name="status_alternate_source_queued">代替ソースを追加しました\n%1$s\n%2$s</string>
     <string name="status_selected_source_queued">選択したソースを追加しました\n%1$s\n%2$s</string>
@@ -46,6 +50,7 @@
     <string name="task_message_queued">待機中</string>
     <string name="task_message_recovered">サービス再起動後にキューへ戻しました</string>
     <string name="task_message_running">ダウンロード中</string>
+    <string name="task_message_playback_started">再生を開始しました。ダウンロードは継続します</string>
     <string name="task_message_done">完了</string>
     <string name="task_message_failed">ダウンロード失敗：%1$s</string>
     <string name="task_message_cancelled">キャンセル済み</string>
@@ -71,6 +76,7 @@
     <string name="notification_queue_finished">キューが完了しました</string>
     <string name="notification_downloading_slots">ダウンロード中 %1$d/%2$d</string>
     <string name="notification_downloading_progress">ダウンロード中 %1$s</string>
+    <string name="notification_playback_started">再生を開始しました。ダウンロードは継続します</string>
     <string name="notification_download_complete">ダウンロード完了</string>
     <string name="notification_download_failed">ダウンロード失敗</string>
     <string name="notification_action_cancel">キャンセル</string>
@@ -107,4 +113,5 @@
     <string name="search_candidate_media_fallback">解析済みメディアの予備候補</string>
     <string name="search_candidate_alternate">ほかの検索結果：%1$s</string>
     <string name="search_candidate_previous">以前の検索結果：%1$s</string>
+    <string name="task_message_playback_unavailable">&#12503;&#12524;&#12540;&#12516;&#12540;&#12434;&#36215;&#21205;&#12391;&#12365;&#12414;&#12379;&#12435;&#12290;&#12480;&#12454;&#12531;&#12525;&#12540;&#12489;&#12399;&#32154;&#34892;&#12375;&#12414;&#12377;</string>
 </resources>

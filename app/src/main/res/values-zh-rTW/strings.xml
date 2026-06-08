@@ -4,6 +4,7 @@
     <string name="hint_url">網址、影片名稱、番號，或 Copy as cURL 文字&#10;curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...</string>
     <string name="hint_file_name">檔名（選填）</string>
     <string name="action_download">下載</string>
+    <string name="action_play_after_50mb">下載 50MB 後播放</string>
     <string name="action_open_menu">開啟選單</string>
     <string name="action_open_settings">開啟設定</string>
     <string name="section_download_queue">下載隊列</string>
@@ -36,7 +37,10 @@
     <string name="toast_log_export_failed">記錄匯出失敗</string>
     <string name="status_download_queued">已加入下載佇列\n%1$s</string>
     <string name="status_search_queued">已加入搜尋佇列\n%1$s</string>
+    <string name="status_download_play_after_queued">已加入下載佇列，下載 50MB 後開始播放\n%1$s</string>
+    <string name="status_search_play_after_queued">已加入搜尋佇列，下載 50MB 後開始播放\n%1$s</string>
     <string name="status_queued_downloads">已加入 %1$d 個下載</string>
+    <string name="status_queued_downloads_play_after">已加入 %1$d 個下載，下載 50MB 後開始播放</string>
     <string name="status_retry_queued">已加入重試佇列\n%1$s</string>
     <string name="status_alternate_source_queued">已加入替代來源\n%1$s\n%2$s</string>
     <string name="status_selected_source_queued">已加入選取來源\n%1$s\n%2$s</string>
@@ -46,6 +50,7 @@
     <string name="task_message_queued">已排入佇列</string>
     <string name="task_message_recovered">服務重啟後已恢復佇列</string>
     <string name="task_message_running">下載中</string>
+    <string name="task_message_playback_started">已開始播放，下載會繼續</string>
     <string name="task_message_done">已完成</string>
     <string name="task_message_failed">下載失敗：%1$s</string>
     <string name="task_message_cancelled">已取消</string>
@@ -71,6 +76,7 @@
     <string name="notification_queue_finished">佇列已完成</string>
     <string name="notification_downloading_slots">下載中 %1$d/%2$d</string>
     <string name="notification_downloading_progress">下載中 %1$s</string>
+    <string name="notification_playback_started">已開始播放，下載會繼續</string>
     <string name="notification_download_complete">下載完成</string>
     <string name="notification_download_failed">下載失敗</string>
     <string name="notification_action_cancel">取消</string>
@@ -107,4 +113,5 @@
     <string name="search_candidate_media_fallback">已解析的媒體備援</string>
     <string name="search_candidate_alternate">其他搜尋結果：%1$s</string>
     <string name="search_candidate_previous">先前搜尋結果：%1$s</string>
+    <string name="task_message_playback_unavailable">&#28961;&#27861;&#21855;&#21205;&#25773;&#25918;&#22120;&#65292;&#19979;&#36617;&#26371;&#32380;&#32396;</string>
 </resources>
