@@ -141,4 +141,7 @@
     <string name="completed_video_none">&#23436;&#20102;&#28168;&#12415;&#21205;&#30011;&#12399;&#12354;&#12426;&#12414;&#12379;&#12435;</string>
     <string name="task_message_playback_unavailable">&#12503;&#12524;&#12540;&#12516;&#12540;&#12434;&#36215;&#21205;&#12391;&#12365;&#12414;&#12379;&#12435;&#12290;&#12480;&#12454;&#12531;&#12525;&#12540;&#12489;&#12399;&#32154;&#34892;&#12375;&#12414;&#12377;</string>
     <string name="engine_dash_video_only_audio_pending">DASH 音声トラックを検出しましたが、音声 mux は未移植です：%1$s</string>
+    <string name="engine_media_validated">完了したメディアファイルを検証しました</string>
+    <string name="engine_http_content_type_validated">HTTP メディア Content-Type を検証しました</string>
+    <string name="engine_http_size_validated">HTTP ダウンロードサイズを検証しました</string>
 </resources>

@@ -141,4 +141,7 @@
     <string name="search_candidate_previous">previous search result: %1$s</string>
     <string name="task_message_playback_unavailable">Could not start a player; download continues</string>
     <string name="engine_dash_video_only_audio_pending">DASH audio track detected but mux is not yet ported: %1$s</string>
+    <string name="engine_media_validated">Validated completed media file</string>
+    <string name="engine_http_content_type_validated">Validated HTTP media content type</string>
+    <string name="engine_http_size_validated">Validated HTTP download size</string>
 </resources>

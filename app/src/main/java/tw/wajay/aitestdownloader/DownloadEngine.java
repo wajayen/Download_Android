@@ -1,6 +1,8 @@
 package tw.wajay.aitestdownloader;
 
 import android.content.Context;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Environment;
@@ -9,6 +11,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -24,6 +27,7 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.URL;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -787,6 +791,7 @@ final class DownloadEngine {
         long contentLength = connection.getContentLengthLong();
         long total = contentLength > 0L ? existing + contentLength : -1L;
         String contentDisposition = connection.getHeaderField("Content-Disposition");
+        validateHttpContentType(connection.getContentType(), rawUrl, callback);
 
         try (InputStream input = new BufferedInputStream(connection.getInputStream());
              FileOutputStream fos = new FileOutputStream(part, canResume);
@@ -800,6 +805,8 @@ final class DownloadEngine {
             callback.onStatus(context.getString(R.string.engine_cancelled_keep_partial));
             return;
         }
+        validateHttpCompleteSize(part, total, callback);
+        rejectTextErrorFile(part, rawUrl);
         String headerName = FileNames.fromContentDisposition(contentDisposition);
         if (!headerName.isEmpty()) {
             output = uniqueOutputFile(headerName);
@@ -808,7 +815,39 @@ final class DownloadEngine {
         if (state.exists()) {
             state.delete();
         }
+        validateCompletedMedia(output, callback);
         callback.onDone(output);
+    }
+
+    private void validateHttpContentType(String contentType, String rawUrl, Callback callback) throws IOException {
+        rejectNonMediaContentType(contentType, rawUrl);
+        callback.onStatus(context.getString(R.string.engine_http_content_type_validated));
+    }
+
+    private void rejectNonMediaContentType(String contentType, String rawUrl) throws IOException {
+        String normalized = contentType == null ? "" : contentType.toLowerCase(Locale.US).trim();
+        if (normalized.isEmpty()) {
+            return;
+        }
+        String mediaType = normalized.split(";", 2)[0].trim();
+        if (mediaType.equals("text/html")
+                || mediaType.equals("text/plain")
+                || mediaType.equals("application/json")
+                || mediaType.equals("application/xml")
+                || mediaType.equals("text/xml")) {
+            throw new IOException("HTTP response is not media content: " + mediaType);
+        }
+    }
+
+    private void validateHttpCompleteSize(File part, long expectedBytes, Callback callback) throws IOException {
+        if (expectedBytes <= 0L) {
+            return;
+        }
+        long actualBytes = part == null || !part.exists() ? 0L : part.length();
+        if (actualBytes != expectedBytes) {
+            throw new IOException("HTTP download size mismatch: expected " + expectedBytes + " bytes, got " + actualBytes + " bytes");
+        }
+        callback.onStatus(context.getString(R.string.engine_http_size_validated));
     }
 
     private void downloadHls(String rawUrl, String requestedFileName, String refererUrl, Callback callback) throws IOException {
@@ -853,7 +892,9 @@ final class DownloadEngine {
         if (checkpoint.exists()) {
             checkpoint.delete();
         }
-        callback.onDone(remuxHlsOutput(output, requestedFileName, callback));
+        File completed = remuxHlsOutput(output, requestedFileName, callback);
+        validateCompletedMedia(completed, callback);
+        callback.onDone(completed);
     }
 
     private void downloadDash(String rawUrl, String fileName, String refererUrl, Callback callback) throws IOException {
@@ -898,7 +939,55 @@ final class DownloadEngine {
         if (checkpoint.exists()) {
             checkpoint.delete();
         }
+        validateCompletedMedia(output, callback);
         callback.onDone(output);
+    }
+
+    private void validateCompletedMedia(File output, Callback callback) throws IOException {
+        if (output == null || !output.isFile() || output.length() <= 0L) {
+            throw new IOException("download output file is missing or empty");
+        }
+        if (!shouldProbeMediaTracks(output.getName())) {
+            return;
+        }
+        MediaExtractor extractor = new MediaExtractor();
+        try {
+            extractor.setDataSource(output.getAbsolutePath());
+            int trackCount = extractor.getTrackCount();
+            int mediaTrackIndex = -1;
+            for (int i = 0; i < trackCount; i++) {
+                MediaFormat format = extractor.getTrackFormat(i);
+                String mime = format.containsKey(MediaFormat.KEY_MIME) ? format.getString(MediaFormat.KEY_MIME) : "";
+                if (mime != null && (mime.startsWith("video/") || mime.startsWith("audio/"))) {
+                    mediaTrackIndex = i;
+                    break;
+                }
+            }
+            if (mediaTrackIndex < 0) {
+                throw new IOException("download output is not a valid media file");
+            }
+            extractor.selectTrack(mediaTrackIndex);
+            ByteBuffer sampleBuffer = ByteBuffer.allocate(64 * 1024);
+            if (extractor.readSampleData(sampleBuffer, 0) <= 0) {
+                throw new IOException("download output media track is unreadable");
+            }
+            callback.onStatus(context.getString(R.string.engine_media_validated));
+        } catch (IOException error) {
+            throw error;
+        } catch (Exception error) {
+            throw new IOException("download output is not a valid media file", error);
+        } finally {
+            extractor.release();
+        }
+    }
+
+    private boolean shouldProbeMediaTracks(String fileName) {
+        String lowered = fileName == null ? "" : fileName.toLowerCase(Locale.US);
+        return lowered.endsWith(".mp4")
+                || lowered.endsWith(".m4v")
+                || lowered.endsWith(".webm")
+                || lowered.endsWith(".mkv")
+                || lowered.endsWith(".mov");
     }
 
     private File remuxHlsOutput(File transportOutput, String requestedFileName, Callback callback) {
@@ -1903,6 +1992,7 @@ final class DownloadEngine {
     private byte[] readBytes(String rawUrl, String byteRange, String refererUrl) throws IOException {
         HttpURLConnection connection = open(rawUrl, refererUrl);
         boolean requiresPartial = false;
+        long expectedRangeLength = expectedByteRangeLength(byteRange);
         if (byteRange != null && !byteRange.isEmpty()) {
             String rangeHeader = hlsByteRangeToHttpRange(byteRange);
             if (rangeHeader != null) {
@@ -1920,6 +2010,8 @@ final class DownloadEngine {
         if (code < HttpURLConnection.HTTP_OK || code >= HttpURLConnection.HTTP_MULT_CHOICE) {
             throw httpStatusException(connection, rawUrl, code);
         }
+        rejectNonMediaContentType(connection.getContentType(), rawUrl);
+        long expectedContentLength = connection.getContentLengthLong();
         try (InputStream input = new BufferedInputStream(connection.getInputStream())) {
             byte[] buffer = new byte[128 * 1024];
             java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
@@ -1930,10 +2022,66 @@ final class DownloadEngine {
                 }
                 output.write(buffer, 0, read);
             }
-            return output.toByteArray();
+            byte[] bytes = output.toByteArray();
+            if (expectedRangeLength > 0L && bytes.length != expectedRangeLength) {
+                throw new IOException("byte-range response size mismatch: expected " + expectedRangeLength + " bytes, got " + bytes.length + " bytes");
+            }
+            if (expectedRangeLength <= 0L && expectedContentLength > 0L && bytes.length != expectedContentLength) {
+                throw new IOException("byte response size mismatch: expected " + expectedContentLength + " bytes, got " + bytes.length + " bytes");
+            }
+            rejectTextErrorPayload(bytes, rawUrl);
+            return bytes;
         } finally {
             connection.disconnect();
         }
+    }
+
+    private void rejectTextErrorPayload(byte[] bytes, String rawUrl) throws IOException {
+        if (bytes == null || bytes.length < 32) {
+            return;
+        }
+        int length = Math.min(bytes.length, 512);
+        int printable = 0;
+        for (int i = 0; i < length; i++) {
+            int value = bytes[i] & 0xff;
+            if (value == 9 || value == 10 || value == 13 || (value >= 32 && value <= 126)) {
+                printable++;
+            }
+        }
+        if (printable < length * 0.85) {
+            return;
+        }
+        String prefix = new String(bytes, 0, length, StandardCharsets.UTF_8).trim().toLowerCase(Locale.US);
+        if (prefix.startsWith("<!doctype")
+                || prefix.startsWith("<html")
+                || prefix.startsWith("<?xml")
+                || prefix.startsWith("{\"error")
+                || prefix.startsWith("{\"message")
+                || prefix.startsWith("{\"status")
+                || prefix.startsWith("[{\"error")
+                || prefix.contains("<body")
+                || prefix.contains("<title>")) {
+            throw new IOException("byte response looks like a text error page for " + shortUrlForError(rawUrl));
+        }
+    }
+
+    private void rejectTextErrorFile(File file, String rawUrl) throws IOException {
+        if (file == null || !file.isFile() || file.length() < 32L) {
+            return;
+        }
+        int length = (int) Math.min(file.length(), 512L);
+        byte[] prefix = new byte[length];
+        int read;
+        try (FileInputStream input = new FileInputStream(file)) {
+            read = input.read(prefix);
+        }
+        if (read <= 0) {
+            return;
+        }
+        if (read < prefix.length) {
+            prefix = Arrays.copyOf(prefix, read);
+        }
+        rejectTextErrorPayload(prefix, rawUrl);
     }
 
     private HlsKey parseKey(String line, String manifestUrl) {
@@ -1981,6 +2129,33 @@ final class DownloadEngine {
             return "bytes=" + start + "-" + end;
         } catch (NumberFormatException ignored) {
             return null;
+        }
+    }
+
+    private long expectedByteRangeLength(String byteRange) {
+        String trimmed = byteRange == null ? "" : byteRange.trim();
+        if (trimmed.isEmpty()) {
+            return -1L;
+        }
+        String value = trimmed.toLowerCase(Locale.US).startsWith("bytes=") ? trimmed.substring(6).trim() : trimmed;
+        if (value.contains("@")) {
+            try {
+                long length = Long.parseLong(value.split("@", 2)[0].trim());
+                return length > 0L ? length : -1L;
+            } catch (NumberFormatException ignored) {
+                return -1L;
+            }
+        }
+        String[] range = value.split("-", 2);
+        if (range.length != 2 || range[0].trim().isEmpty() || range[1].trim().isEmpty()) {
+            return -1L;
+        }
+        try {
+            long start = Long.parseLong(range[0].trim());
+            long end = Long.parseLong(range[1].trim());
+            return end >= start ? end - start + 1L : -1L;
+        } catch (NumberFormatException ignored) {
+            return -1L;
         }
     }
 

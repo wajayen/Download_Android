@@ -9,10 +9,10 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Android-friendly main screen with a left hamburger menu, right overflow settings menu, and download queue centered as the primary content.
 - Main UI now uses a calm Japanese-inspired Android layout with pale surfaces, subtle borders, the new-download controls above the download queue, and large touch-friendly controls.
 - New-download controls now list the latest three completed videos from the app download directory above the playback controls, allowing one to be selected and opened in an external player.
-- Completed-video playback now lists only playable files that still exist in the download directory or can be opened through MediaStore, shows filenames without extensions or numbering, and uses up/down controls to select beyond the three visible rows.
+- Completed-video playback now lists only playable files that still exist in the app download directory or the public Downloads/AI Test Downloader directory, shows filenames without extensions or numbering, and uses right-side up/down controls to select beyond the three visible rows without adding vertical height.
 - Completed-video playback controls now have English, Traditional Chinese, Simplified Chinese, and Japanese dictionary entries instead of falling back to mixed UI text.
 - Completed-video playback now refreshes when returning to the app and includes completed files exported to public Downloads/AI Test Downloader, using scoped read-only content URIs for playback.
-- Completed-video playback now queries public Downloads/AI Test Downloader through MediaStore on Android 10+ and plays those entries by MediaStore URI, avoiding scoped-storage file path issues.
+- Completed-video playback no longer uses MediaStore history for its selectable list, so deleted files that remain in Android media indexes are not shown as playable choices.
 - Completed-video playback now requests Android 13+ video media permission so public exported videos are visible in the recent completed-video list when the platform requires it.
 - Completed-video playback now refreshes the recent completed-video list immediately after notification, legacy storage, or Android 13+ video media permissions return.
 - Download queue now shows only unfinished files with their current progress, hides resolved-source metadata from the queue area, and clears completed tasks on app/service startup.
@@ -132,6 +132,15 @@ This Android app is a native port track for the desktop downloader in `downloade
 - DASH parsing now honors MPD, Period, AdaptationSet, and Representation `BaseURL` hierarchy and skips audio-only AdaptationSet or Representation candidates before selecting the video stream.
 - DASH representation selection now also skips text/subtitle/image tracks and explicitly prefers video-like representations by MIME/content type, codecs, or dimensions.
 - DASH manifest parsing now detects separate audio tracks and reports that Android currently downloads the selected video representation while audio muxing remains pending, making the largest FFmpeg/ffprobe parity gap visible during downloads.
+- Completed HTTP, HLS-remuxed, and DASH video outputs now run an Android-native media validation pass before being marked done, rejecting empty or unreadable MP4/M4V/WebM/MKV/MOV containers while keeping TS validation conservative to avoid device-specific false failures.
+- Android-native media validation now also reads a sample from the first detected audio/video track, catching files that expose an empty track but cannot actually provide playable media data.
+- Direct HTTP downloads now reject obvious non-media response types such as HTML, JSON, XML, or plain text before writing the output file, reducing false successes from error pages saved as videos.
+- HLS and DASH byte downloads now share the same non-media `Content-Type` rejection for segments, init maps, keys, and fragmented MP4 chunks, reducing playlist corruption from CDN error pages.
+- HLS and DASH byte-range downloads now validate the returned byte count against the requested range length, catching partial CDN responses before they are merged into the output.
+- HLS and DASH non-range byte downloads now validate returned bytes against server `Content-Length` when available, catching truncated segment/init/key responses before merge or decrypt.
+- HLS and DASH byte downloads now sniff text-like payload prefixes after reading bytes, rejecting obvious HTML, XML, or JSON error pages even when a CDN labels them as generic binary content.
+- Direct HTTP downloads now also sniff the completed partial file prefix before finalizing, catching text error pages saved as `.ts` or other direct media-like outputs that do not go through container probing.
+- Direct HTTP downloads now validate the finished `.part` size against server `Content-Length` before finalizing, preventing short or truncated transfers from being marked complete.
 - DASH `SegmentTimeline` parsing now expands negative repeat counts such as `S r="-1"` up to the next timeline timestamp or period duration.
 - DASH init and media segment downloads now retry transient failures and reject empty responses before writing them to the output.
 - DASH downloads write init + media segments into `.mp4` and keep a checkpoint for resumable segment progress.

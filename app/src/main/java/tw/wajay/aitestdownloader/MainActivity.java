@@ -7,7 +7,6 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -15,7 +14,6 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.provider.MediaStore;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -795,29 +793,46 @@ public final class MainActivity extends Activity {
             completedVideoList.addView(completedVideoRow(getString(R.string.completed_video_none), false, null), matchWrap());
             return;
         }
-        completedVideoList.addView(videoSelectButton("\u25b2", selectedCompletedVideoIndex > 0, view -> {
+        LinearLayout picker = new LinearLayout(this);
+        picker.setOrientation(LinearLayout.HORIZONTAL);
+        picker.setGravity(Gravity.CENTER_VERTICAL);
+        completedVideoList.addView(picker, matchWrap());
+
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        picker.addView(rows, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        LinearLayout controls = new LinearLayout(this);
+        controls.setOrientation(LinearLayout.VERTICAL);
+        controls.setPadding(dp(8), 0, 0, 0);
+        picker.addView(controls, new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        Button upButton = videoSelectButton("\u25b2", selectedCompletedVideoIndex > 0, view -> {
             if (selectedCompletedVideoIndex > 0) {
                 selectedCompletedVideoIndex--;
                 refreshCompletedVideos();
             }
-        }), matchWrap());
+        });
+        controls.addView(upButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
+
         int start = Math.max(0, Math.min(selectedCompletedVideoIndex - 1, completedVideos.size() - 3));
         int end = Math.min(completedVideos.size(), start + 3);
         for (int i = start; i < end; i++) {
             final int index = i;
-            completedVideoList.addView(
+            rows.addView(
                     completedVideoRow(completedVideos.get(i).label, i == selectedCompletedVideoIndex, view -> {
                         selectedCompletedVideoIndex = index;
                         refreshCompletedVideos();
                     }),
                     matchWrap());
         }
-        completedVideoList.addView(videoSelectButton("\u25bc", selectedCompletedVideoIndex < completedVideos.size() - 1, view -> {
+        Button downButton = videoSelectButton("\u25bc", selectedCompletedVideoIndex < completedVideos.size() - 1, view -> {
             if (selectedCompletedVideoIndex < completedVideos.size() - 1) {
                 selectedCompletedVideoIndex++;
                 refreshCompletedVideos();
             }
-        }), matchWrap());
+        });
+        controls.addView(downButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
     }
 
     private CompletedVideo selectedCompletedVideo() {
@@ -859,12 +874,8 @@ public final class MainActivity extends Activity {
             dir = getFilesDir();
         }
         addCompletedVideos(videos, dir);
-        if (Build.VERSION.SDK_INT >= 29) {
-            addCompletedVideosFromMediaStore(videos);
-        } else {
-            File publicDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "AI Test Downloader");
-            addCompletedVideos(videos, publicDir);
-        }
+        File publicDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "AI Test Downloader");
+        addCompletedVideos(videos, publicDir);
         videos.sort((left, right) -> Long.compare(right.updatedAt, left.updatedAt));
         return labeledCompletedVideos(videos);
     }
@@ -886,43 +897,6 @@ public final class MainActivity extends Activity {
             if (!containsCompletedVideo(videos, file)) {
                 videos.add(CompletedVideo.fromFile(file, ""));
             }
-        }
-    }
-
-    private void addCompletedVideosFromMediaStore(List<CompletedVideo> videos) {
-        String[] projection = new String[]{
-                MediaStore.Downloads._ID,
-                MediaStore.Downloads.DISPLAY_NAME,
-                MediaStore.Downloads.DATE_MODIFIED,
-                MediaStore.Downloads.SIZE,
-                MediaStore.Downloads.RELATIVE_PATH
-        };
-        String selection = MediaStore.Downloads.RELATIVE_PATH + "=? AND " + MediaStore.Downloads.SIZE + ">0";
-        String[] selectionArgs = new String[]{Environment.DIRECTORY_DOWNLOADS + "/AI Test Downloader/"};
-        try (Cursor cursor = getContentResolver().query(
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                projection,
-                selection,
-                selectionArgs,
-                MediaStore.Downloads.DATE_MODIFIED + " DESC")) {
-            if (cursor == null) {
-                return;
-            }
-            int idColumn = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID);
-            int nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME);
-            int modifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DATE_MODIFIED);
-            while (cursor.moveToNext()) {
-                String name = cursor.getString(nameColumn);
-                if (!isPlayableVideo(name)) {
-                    continue;
-                }
-                Uri uri = Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, String.valueOf(cursor.getLong(idColumn)));
-                if (canOpenVideoUri(uri) && !containsCompletedVideo(videos, uri)) {
-                    videos.add(CompletedVideo.fromUri(uri, name, cursor.getLong(modifiedColumn) * 1000L, ""));
-                }
-            }
-        } catch (Exception ignored) {
-            // MediaStore visibility varies by Android version and permissions; private files remain available.
         }
     }
 

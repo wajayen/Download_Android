@@ -141,4 +141,7 @@
     <string name="completed_video_none">&#27794;&#26377;&#24050;&#23436;&#25104;&#30340;&#24433;&#29255;</string>
     <string name="task_message_playback_unavailable">&#28961;&#27861;&#21855;&#21205;&#25773;&#25918;&#22120;&#65292;&#19979;&#36617;&#26371;&#32380;&#32396;</string>
     <string name="engine_dash_video_only_audio_pending">偵測到 DASH 音訊軌，但音訊合併尚未移植：%1$s</string>
+    <string name="engine_media_validated">已驗證完成媒體檔</string>
+    <string name="engine_http_content_type_validated">已驗證 HTTP 媒體內容類型</string>
+    <string name="engine_http_size_validated">已驗證 HTTP 下載大小</string>
 </resources>
