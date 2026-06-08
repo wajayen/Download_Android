@@ -89,7 +89,7 @@ function Wait-RemoteTagVisibility {
         [int]$MaxAttempts = 10
     )
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-        $remoteRefs = git -c safe.directory=$repoRoot ls-remote --tags origin $ReleaseTag 2>$null
+        $remoteRefs = git -c safe.directory=$repoRoot -c http.sslBackend=openssl ls-remote --tags origin $ReleaseTag 2>$null
         if ($LASTEXITCODE -eq 0 -and $remoteRefs) {
             return
         }
@@ -165,11 +165,11 @@ if ($LASTEXITCODE -eq 0) {
 if (-not $originExists) {
     Invoke-LoggedCommand -FilePath $gh -Arguments @("repo", "create", $RepoName, "--$Visibility", "--source", ".", "--remote", "origin", "--push")
 } else {
-    Invoke-LoggedCommand -FilePath "git" -Arguments @("-c", "safe.directory=$repoRoot", "push", "-u", "origin", "HEAD")
+    Invoke-LoggedCommand -FilePath "git" -Arguments @("-c", "safe.directory=$repoRoot", "-c", "http.sslBackend=openssl", "push", "-u", "origin", "HEAD")
 }
 
 Invoke-LoggedCommand -FilePath "git" -Arguments @("-c", "safe.directory=$repoRoot", "tag", "-f", $TagName)
-Invoke-LoggedCommand -FilePath "git" -Arguments @("-c", "safe.directory=$repoRoot", "push", "origin", ("refs/tags/{0}" -f $TagName), "--force")
+Invoke-LoggedCommand -FilePath "git" -Arguments @("-c", "safe.directory=$repoRoot", "-c", "http.sslBackend=openssl", "push", "origin", ("refs/tags/{0}" -f $TagName), "--force")
 if ($DryRun) {
     Write-Host ("[DryRun] wait for remote tag visibility: {0}" -f $TagName)
 } else {
