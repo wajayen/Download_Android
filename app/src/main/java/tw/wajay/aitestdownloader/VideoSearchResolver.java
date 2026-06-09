@@ -324,6 +324,9 @@ final class VideoSearchResolver {
                     return;
                 }
                 RankedResult enriched = enrichSearchResult(result, searchUrl);
+                if (resultMatchScore(enriched.title, enriched.url, query) <= 0) {
+                    continue;
+                }
                 addResult(enriched.url, enriched.title, searchUrl, seen, out, enriched.thumbnailUrl, enriched.thumbnailRefererUrl);
             }
         } catch (IOException ignored) {
@@ -355,9 +358,6 @@ final class VideoSearchResolver {
             String cardHtml = resultCardHtml(html, matcher.start(), matcher.end());
             String title = firstNonEmptyTitle(cleanTitle(matcher.group(2)), extractNearbyTitle(cardHtml), extractNearbyTitle(nearbyHtml), titleFromUrl(url));
             int score = resultMatchScore(title, url, query);
-            if (score <= 0) {
-                continue;
-            }
             String thumbnailUrl = firstNonEmptyTitle(extractThumbnailUrl(cardHtml, baseUrl), extractThumbnailUrl(nearbyHtml, baseUrl));
             ranked.add(new RankedResult(url, sourceLabel + ": " + title, score, thumbnailUrl, baseUrl));
         }
@@ -374,13 +374,10 @@ final class VideoSearchResolver {
             if (!looksLikeSearchResultPath(url)) {
                 continue;
             }
-            int score = resultMatchScore("", url, query);
-            if (score <= 0) {
-                continue;
-            }
             String nearbyHtml = htmlWindow(html, dataMatcher.start(), dataMatcher.end());
             String cardHtml = resultCardHtml(html, dataMatcher.start(), dataMatcher.end());
             String title = firstNonEmptyTitle(extractNearbyTitle(cardHtml), extractNearbyTitle(nearbyHtml), titleFromUrl(url), "embedded link");
+            int score = resultMatchScore(title, url, query);
             String thumbnailUrl = firstNonEmptyTitle(extractThumbnailUrl(cardHtml, baseUrl), extractThumbnailUrl(nearbyHtml, baseUrl));
             ranked.add(new RankedResult(url, sourceLabel + ": " + title, score, thumbnailUrl, baseUrl));
         }
@@ -390,8 +387,9 @@ final class VideoSearchResolver {
                 return Integer.compare(right.score, left.score);
             }
         });
-        if (ranked.size() > SITE_SEARCH_LINK_LIMIT) {
-            return new ArrayList<>(ranked.subList(0, SITE_SEARCH_LINK_LIMIT));
+        int visibleLimit = SITE_SEARCH_LINK_LIMIT * 3;
+        if (ranked.size() > visibleLimit) {
+            return new ArrayList<>(ranked.subList(0, visibleLimit));
         }
         return ranked;
     }
@@ -431,9 +429,6 @@ final class VideoSearchResolver {
                 continue;
             }
             String title = cleanTitle(matcher.group(2));
-            if (resultMatchScore(title, url, query) <= 0) {
-                continue;
-            }
             RankedResult enriched = enrichSearchResult(new RankedResult(url, title, 1), "");
             if (resultMatchScore(enriched.title, enriched.url, query) <= 0) {
                 continue;
