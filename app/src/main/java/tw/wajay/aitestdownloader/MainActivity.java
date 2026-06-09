@@ -514,9 +514,6 @@ public final class MainActivity extends Activity {
                 return;
             }
             String fileName = FileNames.sanitize(fileNameInput.getText().toString());
-            if (fileName.isEmpty()) {
-                fileName = FileNames.sanitize(query) + ".mp4";
-            }
             showSearchResults(query, fileName, playAfterThreshold);
             return;
         }
@@ -668,11 +665,16 @@ public final class MainActivity extends Activity {
             title = title.substring(title.indexOf(": ") + 2).trim();
         }
         title = title.replaceFirst("(?i)^direct\\s+code\\s*:\\s*", "").trim();
+        title = title.replaceFirst("(?i)^embedded\\s+link$", "").trim();
         if (!title.isEmpty() && !"embedded link".equalsIgnoreCase(title)) {
             return title;
         }
         String fallback = result == null ? "" : Uri.parse(result.url).getLastPathSegment();
         fallback = fallback == null ? "" : fallback.trim();
+        int dot = fallback.lastIndexOf('.');
+        if (dot > 0) {
+            fallback = fallback.substring(0, dot);
+        }
         return fallback.isEmpty() ? getString(R.string.search_result_no_title) : fallback;
     }
 
@@ -702,12 +704,18 @@ public final class MainActivity extends Activity {
             HttpURLConnection connection = null;
             try {
                 connection = (HttpURLConnection) new URL(url).openConnection();
+                connection.setInstanceFollowRedirects(true);
                 connection.setConnectTimeout(7000);
                 connection.setReadTimeout(9000);
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36");
                 connection.setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
+                connection.setRequestProperty("Accept-Language", "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6");
                 if (!referer.isEmpty()) {
                     connection.setRequestProperty("Referer", referer);
+                }
+                int code = connection.getResponseCode();
+                if (code >= 400) {
+                    return;
                 }
                 try (InputStream input = connection.getInputStream()) {
                     Bitmap bitmap = BitmapFactory.decodeStream(input);

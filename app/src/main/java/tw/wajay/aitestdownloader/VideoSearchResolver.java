@@ -38,10 +38,16 @@ final class VideoSearchResolver {
             "\\b(?:data-url|data-href|data-src|data-play|data-link|data-video|data-clipboard-text)=[\"']([^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern IMAGE_SRC = Pattern.compile(
-            "<img\\b[^>]+(?:src|data-src|data-original|data-lazy-src|data-thumb|data-poster)=[\"']([^\"']+)[\"']",
+            "<(?:img|source|video)\\b[^>]+(?:src|poster|data-src|data-original|data-lazy-src|data-thumb|data-thumbnail|data-image|data-cover|data-poster|data-background-image)=[\"']([^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern IMAGE_SRCSET = Pattern.compile(
             "<img\\b[^>]+(?:srcset|data-srcset)=[\"']([^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern STYLE_IMAGE = Pattern.compile(
+            "(?:background|background-image)\\s*:\\s*url\\((['\"]?)(.*?)\\1\\)",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern JSON_IMAGE = Pattern.compile(
+            "[\"'](?:thumbnailUrl|thumbnail|thumb|image|imageUrl|poster|posterUrl|cover|coverUrl|pic|vod_pic)[\"']\\s*:\\s*[\"']([^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern META_IMAGE = Pattern.compile(
             "<meta\\b[^>]+(?:property|name)=[\"'](?:og:image|twitter:image|twitter:image:src)[\"'][^>]+content=[\"']([^\"']+)[\"']|<meta\\b[^>]+content=[\"']([^\"']+)[\"'][^>]+(?:property|name)=[\"'](?:og:image|twitter:image|twitter:image:src)[\"']",
@@ -493,7 +499,7 @@ final class VideoSearchResolver {
         while (metaMatcher.find()) {
             String raw = firstNonEmptyTitle(metaMatcher.group(1), metaMatcher.group(2));
             String url = normalizeResultUrl(raw, baseUrl);
-            if (looksLikeThumbnailUrl(url)) {
+            if (looksLikeThumbnailUrl(url, true)) {
                 return url;
             }
         }
@@ -501,7 +507,7 @@ final class VideoSearchResolver {
         while (matcher.find()) {
             String raw = matcher.group(1);
             String url = normalizeResultUrl(raw, baseUrl);
-            if (looksLikeThumbnailUrl(url)) {
+            if (looksLikeThumbnailUrl(url, false)) {
                 return url;
             }
         }
@@ -510,9 +516,23 @@ final class VideoSearchResolver {
             for (String candidate : srcsetMatcher.group(1).split(",")) {
                 String raw = candidate.trim().split("\\s+")[0];
                 String url = normalizeResultUrl(raw, baseUrl);
-                if (looksLikeThumbnailUrl(url)) {
+                if (looksLikeThumbnailUrl(url, false)) {
                     return url;
                 }
+            }
+        }
+        Matcher styleMatcher = STYLE_IMAGE.matcher(html == null ? "" : html);
+        while (styleMatcher.find()) {
+            String url = normalizeResultUrl(styleMatcher.group(2), baseUrl);
+            if (looksLikeThumbnailUrl(url, false)) {
+                return url;
+            }
+        }
+        Matcher jsonMatcher = JSON_IMAGE.matcher(html == null ? "" : html);
+        while (jsonMatcher.find()) {
+            String url = normalizeResultUrl(unescapeScriptString(jsonMatcher.group(1)), baseUrl);
+            if (looksLikeThumbnailUrl(url, true)) {
+                return url;
             }
         }
         return "";
@@ -586,7 +606,7 @@ final class VideoSearchResolver {
         }
     }
 
-    private static boolean looksLikeThumbnailUrl(String rawUrl) {
+    private static boolean looksLikeThumbnailUrl(String rawUrl, boolean trustedMetadata) {
         String url = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             return false;
@@ -597,15 +617,32 @@ final class VideoSearchResolver {
                 || url.contains("loading")) {
             return false;
         }
-        return !url.endsWith(".svg")
-                && (url.contains(".jpg")
+        if (url.endsWith(".svg")
+                || hasSupportedMediaExtension(url)
+                || url.contains(".m3u8")
+                || url.contains(".mpd")) {
+            return false;
+        }
+        return trustedMetadata
+                || url.contains(".jpg")
                 || url.contains(".jpeg")
                 || url.contains(".png")
                 || url.contains(".webp")
                 || url.contains(".gif")
                 || url.contains("thumb")
                 || url.contains("cover")
-                || url.contains("poster"));
+                || url.contains("poster")
+                || url.contains("image")
+                || url.contains("pic");
+    }
+
+    private static String unescapeScriptString(String value) {
+        return (value == null ? "" : value)
+                .replace("\\/", "/")
+                .replace("\\u0026", "&")
+                .replace("\\u003d", "=")
+                .replace("\\u003f", "?")
+                .replace("\\u0025", "%");
     }
 
     private static String normalizeResultUrl(String raw) {
