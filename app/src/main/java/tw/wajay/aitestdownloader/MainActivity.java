@@ -702,7 +702,7 @@ public final class MainActivity extends Activity {
         scroll.addView(list);
         final AlertDialog[] holder = new AlertDialog[1];
         for (VideoSearchResolver.Result result : results) {
-            list.addView(searchResultRow(result, holder, fileName, playAfterThreshold), matchWrap());
+            list.addView(searchResultRow(query, result, holder, fileName, playAfterThreshold), matchWrap());
         }
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(getString(R.string.section_search_results))
@@ -719,6 +719,7 @@ public final class MainActivity extends Activity {
     }
 
     private View searchResultRow(
+            String query,
             VideoSearchResolver.Result result,
             AlertDialog[] holder,
             String fileName,
@@ -766,13 +767,13 @@ public final class MainActivity extends Activity {
             if (holder[0] != null) {
                 holder[0].dismiss();
             }
-            queueSelectedSearchResult(result, fileName, playAfterThreshold);
+            queueSelectedSearchResult(query, result, fileName, playAfterThreshold);
         });
         loadThumbnail(thumbnail, result.thumbnailUrl, result.thumbnailRefererUrl);
         return row;
     }
 
-    private void queueSelectedSearchResult(VideoSearchResolver.Result result, String requestedName, boolean playAfterThreshold) {
+    private void queueSelectedSearchResult(String query, VideoSearchResolver.Result result, String requestedName, boolean playAfterThreshold) {
         String fileName = FileNames.sanitize(requestedName);
         if (fileName.isEmpty()) {
             fileName = FileNames.sanitize(displaySearchTitle(result)) + ".mp4";
@@ -780,7 +781,7 @@ public final class MainActivity extends Activity {
         if (fileName.isEmpty() || ".mp4".equals(fileName)) {
             fileName = "video.mp4";
         }
-        startDownloaderService(DownloadService.startIntent(this, result.url, fileName, result.refererUrl, "", "{}", playAfterThreshold));
+        startDownloaderService(DownloadService.startIntent(this, VideoSearchResolver.searchUri(query, result.url), fileName, result.refererUrl, "", "{}", playAfterThreshold));
         fileNameInput.setText(fileName);
         showDownloadQueuePanel();
         refreshStatus();

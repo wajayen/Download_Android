@@ -711,8 +711,10 @@ final class DownloadEngine {
 
     private void downloadSearchResult(String rawUrl, String requestedName, Callback callback) throws IOException {
         String query = VideoSearchResolver.queryFromUri(rawUrl);
+        String selectedUrl = VideoSearchResolver.selectedUrlFromUri(rawUrl);
         callback.onStatus(context.getString(R.string.engine_searching_video, query));
         List<VideoSearchResolver.Result> results = VideoSearchResolver.search(query);
+        prioritizeSelectedSearchResult(results, selectedUrl);
         if (results.isEmpty()) {
             throw new IOException(context.getString(R.string.error_search_no_results, query));
         }
@@ -761,6 +763,23 @@ final class DownloadEngine {
         throw lastError == null
                 ? new IOException(context.getString(R.string.error_search_no_results, query))
                 : lastError;
+    }
+
+    private void prioritizeSelectedSearchResult(List<VideoSearchResolver.Result> results, String selectedUrl) {
+        if (results == null || results.size() < 2 || selectedUrl == null || selectedUrl.trim().isEmpty()) {
+            return;
+        }
+        String selected = selectedUrl.trim();
+        for (int i = 0; i < results.size(); i++) {
+            VideoSearchResolver.Result result = results.get(i);
+            if (result != null && selected.equals(result.url)) {
+                if (i > 0) {
+                    results.remove(i);
+                    results.add(0, result);
+                }
+                return;
+            }
+        }
     }
 
     private List<String> mergedSearchCandidates(

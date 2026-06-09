@@ -435,6 +435,10 @@ final class TaskStore {
                 builder.append(text(R.string.task_label_queued));
             } else if (STATUS_FAILED.equals(status)) {
                 builder.append(text(R.string.task_label_failed));
+                String error = compactLabel(task.optString("error", ""));
+                if (!error.isEmpty()) {
+                    builder.append(": ").append(error);
+                }
             } else if (STATUS_CANCELLED.equals(status)) {
                 builder.append(text(R.string.task_label_cancelled));
             } else {

@@ -97,12 +97,26 @@ final class VideoSearchResolver {
     }
 
     static String searchUri(String query) {
-        return new Uri.Builder()
+        return searchUri(query, "");
+    }
+
+    static String searchUri(String query, String selectedUrl) {
+        Uri.Builder builder = new Uri.Builder()
                 .scheme(SEARCH_SCHEME)
                 .authority(SEARCH_HOST)
-                .appendQueryParameter("q", query == null ? "" : query.trim())
+                .appendQueryParameter("q", query == null ? "" : query.trim());
+        if (selectedUrl != null && !selectedUrl.trim().isEmpty()) {
+            builder.appendQueryParameter("selected", selectedUrl.trim());
+        }
+        return builder
                 .build()
                 .toString();
+    }
+
+    static String selectedUrlFromUri(String rawUrl) {
+        Uri uri = Uri.parse(rawUrl == null ? "" : rawUrl);
+        String selected = uri.getQueryParameter("selected");
+        return selected == null ? "" : selected.trim();
     }
 
     static boolean isSearchUri(String rawUrl) {

@@ -13,6 +13,8 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Search-result downloads now expand the download queue immediately after a result is selected, and unresolved page/media preparation shows a localized Preparing state instead of a misleading 0% progress value.
 - Download queue summaries now show localized state labels for queued, failed, and cancelled tasks instead of a fake 0% value; real progress is shown only after byte or segment progress exists.
 - System download notifications now include the active filename as notification content and keep the native progress bar synchronized with HTTP byte progress and HLS/DASH segment progress.
+- Search-result downloads now keep the selected result as the first candidate inside a search task instead of queueing only that single page URL, so failed selected sources can automatically fall through to other search candidates before the task is marked failed.
+- Failed queue rows now include a compact error reason, making search/resolve/download failures visible from the Android UI without exporting logs first.
 - Overflow settings now hides the system-default and four-language selector entries and instead exposes a download-directory picker backed by Android's system folder selection.
 - Completed outputs now export to the user-selected download directory when one is configured, falling back to public Downloads/AI Test Downloader otherwise.
 - Completed-output export now falls back to public Downloads/AI Test Downloader if the selected download directory becomes unavailable or its persisted Android permission is revoked.
