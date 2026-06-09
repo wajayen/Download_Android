@@ -312,10 +312,26 @@ public final class DownloadService extends Service {
         @Override
         public void onError(Exception error) {
             String message = error.getMessage() == null ? error.toString() : error.getMessage();
+            JSONObject alternate = taskStore.retryNextCandidateAfterFailure(taskId, message);
+            if (alternate != null) {
+                String nextUrl = alternate.optString("url", "");
+                eventLog.write("alternate_auto", taskId, message + " -> " + nextUrl);
+                updateNotification(getString(R.string.engine_source_failed_switching, shortMessage(message)), fileName, 0L, 0L, true);
+                finishTask(taskId);
+                return;
+            }
             taskStore.failed(taskId, message);
             eventLog.write("error", taskId, message);
             updateNotification(getString(R.string.notification_download_failed), 0L, 0L, false);
             finishTask(taskId);
+        }
+
+        private String shortMessage(String message) {
+            if (message == null) {
+                return "";
+            }
+            String cleaned = message.replaceAll("\\s+", " ").trim();
+            return cleaned.length() > 48 ? cleaned.substring(0, 48) : cleaned;
         }
 
         private String joinCandidates(List<String> candidates) {

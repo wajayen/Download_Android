@@ -40,6 +40,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -152,6 +153,12 @@ final class DownloadEngine {
     private static final Pattern MOVIEFFM_EP_SLUG = Pattern.compile(
             "\\bep_slug=[\"']([^\"']*)[\"']",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern HTML_TITLE = Pattern.compile(
+            "<title\\b[^>]*>(.*?)</title>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern META_TITLE = Pattern.compile(
+            "<meta\\b[^>]+(?:property|name)=[\"'](?:og:title|twitter:title|title)[\"'][^>]+content=[\"']([^\"']+)[\"']|<meta\\b[^>]+content=[\"']([^\"']+)[\"'][^>]+(?:property|name)=[\"'](?:og:title|twitter:title|title)[\"']",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern THREEKOR_LIST_PATH = Pattern.compile("/list/\\d+[^/]*\\.html$", Pattern.CASE_INSENSITIVE);
     private static final Pattern THREEKOR_DETAIL_PATH = Pattern.compile("/detail/\\d+\\.html$", Pattern.CASE_INSENSITIVE);
     private static final Pattern THREEKOR_DETAIL_LINK = Pattern.compile(
@@ -933,41 +940,101 @@ final class DownloadEngine {
     }
 
     private ResolvedTarget resolvePageToMedia(String rawUrl, String initialRefererUrl, Callback callback) throws IOException {
-        String currentUrl = rawUrl;
-        String currentReferer = initialRefererUrl == null ? "" : initialRefererUrl.trim();
-        for (int depth = 0; depth < PAGE_RESOLVE_DEPTH_LIMIT; depth++) {
-            String pageText = readText(currentUrl, currentReferer);
-            if (looksLikeHlsManifest(pageText)) {
-                callback.onStatus(context.getString(R.string.engine_hls_manifest_detected));
-                callback.onResolved(MediaResolver.sourceSite(currentUrl), currentUrl, Collections.singletonList(currentUrl), Collections.singletonList("HLS manifest"));
-                return new ResolvedTarget(currentUrl, MediaResolver.sourceSite(currentUrl), new ArrayList<>(), currentReferer);
-            }
+        return resolvePageToMedia(rawUrl, initialRefererUrl, callback, 0, new LinkedHashSet<String>());
+    }
 
-            String anime1Url = resolveAnime1ApiMedia(currentUrl, pageText);
-            if (anime1Url != null) {
-                callback.onStatus(context.getString(R.string.engine_resolved_anime1));
-                callback.onResolved("anime1", anime1Url, Collections.singletonList(anime1Url), Collections.singletonList("Anime1 API"));
-                return new ResolvedTarget(anime1Url, "anime1", new ArrayList<>(), currentUrl);
-            }
-            SiteMediaResult siteMedia = resolveAdultSiteMedia(currentUrl, pageText);
-            if (siteMedia != null && siteMedia.primaryUrl != null) {
-                callback.onStatus(context.getString(R.string.engine_resolving_page_candidate, siteMedia.sourceSite, depth));
-                callback.onResolved(siteMedia.sourceSite, siteMedia.primaryUrl, siteMedia.candidates, siteCandidateLabels(siteMedia.sourceSite, siteMedia.candidates));
-                return new ResolvedTarget(siteMedia.primaryUrl, siteMedia.sourceSite, mediaFallbacks(siteMedia.candidates, siteMedia.primaryUrl), siteMedia.refererUrl);
-            }
-            MediaResolver.Result resolved = MediaResolver.resolve(pageText, currentUrl);
-            callback.onStatus(context.getString(R.string.engine_resolving_page_candidate, resolved.sourceSite, depth));
-            if (resolved.primaryUrl == null) {
-                throw new IOException(context.getString(R.string.error_no_media_candidate));
-            }
-            callback.onResolved(resolved.sourceSite, resolved.primaryUrl, resolved.candidates, resolved.candidateLabels);
-            if (resolved.primaryIsMedia) {
-                return new ResolvedTarget(resolved.primaryUrl, resolved.sourceSite, mediaFallbacks(resolved.candidates, resolved.primaryUrl), currentUrl);
-            }
-            currentReferer = currentUrl;
-            currentUrl = resolved.primaryUrl;
+    private ResolvedTarget resolvePageToMedia(
+            String rawUrl,
+            String initialRefererUrl,
+            Callback callback,
+            int depth,
+            Set<String> seenPages) throws IOException {
+        String currentUrl = rawUrl == null ? "" : rawUrl.trim();
+        String currentReferer = initialRefererUrl == null ? "" : initialRefererUrl.trim();
+        if (currentUrl.isEmpty()) {
+            throw new IOException(context.getString(R.string.error_no_media_candidate));
         }
-        throw new IOException(context.getString(R.string.error_resolve_depth_exceeded));
+        if (depth >= PAGE_RESOLVE_DEPTH_LIMIT) {
+            throw new IOException(context.getString(R.string.error_resolve_depth_exceeded));
+        }
+        if (!seenPages.add(currentUrl)) {
+            throw new IOException(context.getString(R.string.error_no_media_candidate));
+        }
+
+        String pageText = readText(currentUrl, currentReferer);
+        if (looksLikeHlsManifest(pageText)) {
+            callback.onStatus(context.getString(R.string.engine_hls_manifest_detected));
+            callback.onResolved(
+                    MediaResolver.sourceSite(currentUrl),
+                    currentUrl,
+                    Collections.singletonList(currentUrl),
+                    Collections.singletonList("HLS manifest"),
+                    Collections.singletonList(currentReferer));
+            return new ResolvedTarget(currentUrl, MediaResolver.sourceSite(currentUrl), new ArrayList<>(), currentReferer);
+        }
+
+        String anime1Url = resolveAnime1ApiMedia(currentUrl, pageText);
+        if (anime1Url != null) {
+            callback.onStatus(context.getString(R.string.engine_resolved_anime1));
+            callback.onResolved(
+                    "anime1",
+                    anime1Url,
+                    Collections.singletonList(anime1Url),
+                    Collections.singletonList("Anime1 API"),
+                    Collections.singletonList(currentUrl));
+            return new ResolvedTarget(anime1Url, "anime1", new ArrayList<>(), currentUrl);
+        }
+        SiteMediaResult siteMedia = resolveAdultSiteMedia(currentUrl, pageText);
+        if (siteMedia != null && siteMedia.primaryUrl != null) {
+            callback.onStatus(context.getString(R.string.engine_resolving_page_candidate, siteMedia.sourceSite, depth));
+            callback.onResolved(
+                    siteMedia.sourceSite,
+                    siteMedia.primaryUrl,
+                    siteMedia.candidates,
+                    siteCandidateLabels(siteMedia.sourceSite, siteMedia.candidates),
+                    sameReferers(siteMedia.candidates, siteMedia.refererUrl));
+            return new ResolvedTarget(siteMedia.primaryUrl, siteMedia.sourceSite, mediaFallbacks(siteMedia.candidates, siteMedia.primaryUrl), siteMedia.refererUrl);
+        }
+        MediaResolver.Result resolved = MediaResolver.resolve(pageText, currentUrl);
+        callback.onStatus(context.getString(R.string.engine_resolving_page_candidate, resolved.sourceSite, depth));
+        if (resolved.primaryUrl == null) {
+            throw new IOException(context.getString(R.string.error_no_media_candidate));
+        }
+        callback.onResolved(
+                resolved.sourceSite,
+                resolved.primaryUrl,
+                resolved.candidates,
+                resolved.candidateLabels,
+                sameReferers(resolved.candidates, currentUrl));
+        if (resolved.primaryIsMedia) {
+            return new ResolvedTarget(resolved.primaryUrl, resolved.sourceSite, mediaFallbacks(resolved.candidates, resolved.primaryUrl), currentUrl);
+        }
+
+        IOException lastError = null;
+        for (String candidate : pageFallbacks(resolved.candidates)) {
+            if (cancelled.get()) {
+                throw new IOException(context.getString(R.string.engine_cancelled_keep_partial));
+            }
+            try {
+                return resolvePageToMedia(candidate, currentUrl, callback, depth + 1, new LinkedHashSet<>(seenPages));
+            } catch (IOException error) {
+                lastError = error;
+                callback.onStatus(context.getString(R.string.engine_source_failed_switching, shortMessage(error)));
+            }
+        }
+        List<String> directMediaFallbacks = mediaFallbacks(resolved.candidates, "");
+        if (!directMediaFallbacks.isEmpty()) {
+            String primaryMedia = directMediaFallbacks.get(0);
+            return new ResolvedTarget(
+                    primaryMedia,
+                    resolved.sourceSite,
+                    mediaFallbacks(directMediaFallbacks, primaryMedia),
+                    currentUrl);
+        }
+        if (lastError != null) {
+            throw lastError;
+        }
+        throw new IOException(context.getString(R.string.error_no_media_candidate));
     }
 
     private void downloadWithFallbacks(String primaryUrl, List<String> fallbackUrls, String sourceSite, String fileName, String refererUrl, Callback callback) throws IOException {
@@ -985,7 +1052,13 @@ final class DownloadEngine {
             try {
                 if (i > 0) {
                     callback.onStatus(context.getString(R.string.engine_retrying_alternate_source, i + 1, targets.size()));
-                    callback.onResolved(sourceSite, targetUrl, targets.subList(i, targets.size()), Collections.emptyList());
+                    List<String> remainingTargets = targets.subList(i, targets.size());
+                    callback.onResolved(
+                            sourceSite,
+                            targetUrl,
+                            remainingTargets,
+                            Collections.emptyList(),
+                            sameReferers(remainingTargets, refererUrl));
                 }
                 if (isDashUrl(targetUrl)) {
                     callback.onStatus(context.getString(R.string.engine_resolving_dash));
@@ -1019,6 +1092,26 @@ final class DownloadEngine {
             }
         }
         return fallbacks;
+    }
+
+    private List<String> pageFallbacks(List<String> candidates) {
+        List<String> fallbacks = new ArrayList<>();
+        for (String candidate : candidates) {
+            if (candidate != null && !candidate.trim().isEmpty() && !isMediaUrl(candidate) && !fallbacks.contains(candidate)) {
+                fallbacks.add(candidate);
+            }
+        }
+        return fallbacks;
+    }
+
+    private List<String> sameReferers(List<String> candidates, String refererUrl) {
+        List<String> referers = new ArrayList<>();
+        int count = candidates == null ? 0 : candidates.size();
+        String referer = refererUrl == null ? "" : refererUrl.trim();
+        for (int i = 0; i < count; i++) {
+            referers.add(referer);
+        }
+        return referers;
     }
 
     private SiteMediaResult resolveAdultSiteMedia(String pageUrl, String pageText) throws IOException {
@@ -2908,6 +3001,10 @@ final class DownloadEngine {
     }
 
     private SiteMediaResult resolveMovieFfmMedia(String pageUrl, String pageText) throws IOException {
+        return resolveMovieFfmMedia(pageUrl, pageText, true);
+    }
+
+    private SiteMediaResult resolveMovieFfmMedia(String pageUrl, String pageText, boolean allowSearchFallback) throws IOException {
         List<String> candidates = new ArrayList<>();
         String origin = firstNonEmpty(originFromUrl(pageUrl), "https://www.movieffm.me");
         String contentId = movieFfmContentId(pageUrl, pageText);
@@ -2933,9 +3030,92 @@ final class DownloadEngine {
         }
         candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
         if (candidates.isEmpty()) {
-            return null;
+            return allowSearchFallback ? resolveMovieFfmAlternateFromSearch(pageUrl, pageText) : null;
         }
         return new SiteMediaResult("movieffm", candidates.get(0), candidates, pageUrl);
+    }
+
+    private SiteMediaResult resolveMovieFfmAlternateFromSearch(String pageUrl, String pageText) throws IOException {
+        String title = movieFfmSearchTitle(pageText);
+        if (title.isEmpty()) {
+            return null;
+        }
+        List<VideoSearchResolver.Result> results;
+        try {
+            results = VideoSearchResolver.search(title);
+        } catch (IOException ignored) {
+            return null;
+        }
+        for (VideoSearchResolver.Result result : results) {
+            if (cancelled.get()) {
+                return null;
+            }
+            if (result == null || result.url == null || result.url.isEmpty() || sameUrlWithoutFragment(pageUrl, result.url)) {
+                continue;
+            }
+            if (!"movieffm".equals(MediaResolver.sourceSite(result.url))) {
+                continue;
+            }
+            try {
+                String referer = firstNonEmpty(result.refererUrl, pageUrl);
+                SiteMediaResult media = resolveMovieFfmMedia(result.url, readText(result.url, referer), false);
+                if (media != null) {
+                    return media;
+                }
+            } catch (IOException ignored) {
+                // Try the next same-title MovieFFM candidate.
+            }
+        }
+        return null;
+    }
+
+    private String movieFfmSearchTitle(String pageText) {
+        String text = pageText == null ? "" : pageText;
+        Matcher metaMatcher = META_TITLE.matcher(text);
+        while (metaMatcher.find()) {
+            String title = cleanMovieFfmTitle(firstNonEmpty(metaMatcher.group(1), metaMatcher.group(2)));
+            if (!title.isEmpty()) {
+                return title;
+            }
+        }
+        Matcher titleMatcher = HTML_TITLE.matcher(text);
+        if (titleMatcher.find()) {
+            String title = cleanMovieFfmTitle(titleMatcher.group(1));
+            if (!title.isEmpty()) {
+                return title;
+            }
+        }
+        return "";
+    }
+
+    private String cleanMovieFfmTitle(String rawTitle) {
+        String title = htmlDecoded(rawTitle == null ? "" : rawTitle)
+                .replaceAll("<[^>]+>", " ")
+                .replaceFirst("\\s*[-|].*$", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+        if (title.length() < 2 || title.length() > 80) {
+            return "";
+        }
+        return title;
+    }
+
+    private boolean sameUrlWithoutFragment(String left, String right) {
+        try {
+            URL leftUrl = new URL(left == null ? "" : left);
+            URL rightUrl = new URL(right == null ? "" : right);
+            String leftPort = leftUrl.getPort() <= 0 ? "" : ":" + leftUrl.getPort();
+            String rightPort = rightUrl.getPort() <= 0 ? "" : ":" + rightUrl.getPort();
+            String leftNormalized = leftUrl.getProtocol().toLowerCase(Locale.US) + "://"
+                    + leftUrl.getHost().toLowerCase(Locale.US) + leftPort
+                    + firstNonEmpty(leftUrl.getPath(), "/") + (leftUrl.getQuery() == null ? "" : "?" + leftUrl.getQuery());
+            String rightNormalized = rightUrl.getProtocol().toLowerCase(Locale.US) + "://"
+                    + rightUrl.getHost().toLowerCase(Locale.US) + rightPort
+                    + firstNonEmpty(rightUrl.getPath(), "/") + (rightUrl.getQuery() == null ? "" : "?" + rightUrl.getQuery());
+            return leftNormalized.equals(rightNormalized);
+        } catch (MalformedURLException ignored) {
+            return (left == null ? "" : left).equals(right == null ? "" : right);
+        }
     }
 
     private String movieFfmContentId(String pageUrl, String pageText) {

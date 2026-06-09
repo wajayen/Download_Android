@@ -71,7 +71,7 @@ final class VideoSearchResolver {
             "\\bep_slug=[\"']([^\"']*)[\"']",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern MOVIEFFM_MEDIA_HINT = Pattern.compile(
-            "(?:https?:\\\\?/\\\\?/|\\\\?/\\\\?/)[^\"'<>\\s\\\\]+(?:\\.m3u8|\\.mp4|\\.mpd)|\\b(?:player_aaaa|videourl|postid)\\b|wp-json/dooplayer",
+            "(?:https?:\\\\?/\\\\?/|\\\\?/\\\\?/)[^\"'<>\\s\\\\]+(?:\\.m3u8|\\.mp4|\\.mpd)|\\b(?:player_aaaa|videourl|video_plays|play_data)\\b|/ffm/\\d+/[A-Za-z0-9_-]+|wp-json/dooplayer",
             Pattern.CASE_INSENSITIVE);
     private VideoSearchResolver() {
     }
@@ -177,7 +177,7 @@ final class VideoSearchResolver {
         Set<String> seen = new LinkedHashSet<>();
         List<Result> results = new ArrayList<>();
         addDirectSiteSearchResults(cleanQuery, seen, results);
-        if (!results.isEmpty()) {
+        if (results.size() >= 3) {
             rankSearchResults(results, cleanQuery);
             return results;
         }
@@ -623,12 +623,16 @@ final class VideoSearchResolver {
                 || looksLikeCodeOnlyTitle(titleWithoutSite);
         boolean needsThumbnail = result.thumbnailUrl == null || result.thumbnailUrl.trim().isEmpty();
         boolean needsMovieFfmValidation = isMovieFfmResultUrl(result.url);
-        if (!needsTitle && !needsThumbnail && !needsMovieFfmValidation) {
+        boolean needsResolvableValidation = needsResolvableSearchValidation(MediaResolver.sourceSite(result.url));
+        if (!needsTitle && !needsThumbnail && !needsMovieFfmValidation && !needsResolvableValidation) {
             return result;
         }
         try {
             String html = fetch(result.url, 5000, 7000);
             if (needsMovieFfmValidation && !movieFfmPageLooksDownloadable(html)) {
+                return new RankedResult(result.url, "", -1000, result.thumbnailUrl, result.thumbnailRefererUrl);
+            }
+            if (needsResolvableValidation && !searchPageLooksResolvable(html, result.url)) {
                 return new RankedResult(result.url, "", -1000, result.thumbnailUrl, result.thumbnailRefererUrl);
             }
             String pageTitle = extractPageTitle(html);
@@ -653,11 +657,43 @@ final class VideoSearchResolver {
         return url.contains("movieffm.me") || url.contains("movieffm.net");
     }
 
+    private static boolean needsResolvableSearchValidation(String sourceSite) {
+        if (sourceSite == null || sourceSite.isEmpty()) {
+            return false;
+        }
+        switch (sourceSite) {
+            case "movieffm":
+            case "gimy":
+            case "xiaoyakankan":
+            case "nnyy":
+            case "thanju":
+            case "3kor":
+            case "dramasq":
+            case "olevod":
+            case "777tv":
+            case "99itv":
+            case "ikanbot":
+            case "yfsp":
+            case "anime1":
+            case "ani_gamer":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static boolean searchPageLooksResolvable(String html, String pageUrl) {
+        MediaResolver.Result media = MediaResolver.resolve(html == null ? "" : html, pageUrl == null ? "" : pageUrl);
+        return media != null && media.candidates != null && !media.candidates.isEmpty();
+    }
+
     private static boolean movieFfmPageLooksDownloadable(String html) {
         String text = html == null ? "" : html;
         Matcher slugMatcher = MOVIEFFM_EP_SLUG.matcher(text);
         while (slugMatcher.find()) {
-            return true;
+            if (slugMatcher.group(1) != null && !slugMatcher.group(1).trim().isEmpty()) {
+                return true;
+            }
         }
         return MOVIEFFM_MEDIA_HINT.matcher(text.replace("\\/", "/")).find();
     }

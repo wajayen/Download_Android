@@ -180,9 +180,13 @@ final class TaskStore {
                 task.put("candidateUrls", candidateArray(candidates));
                 if (candidateLabels != null && !candidateLabels.isEmpty()) {
                     task.put("candidateLabels", candidateArray(candidateLabels));
+                } else {
+                    task.remove("candidateLabels");
                 }
                 if (candidateReferers != null && !candidateReferers.isEmpty()) {
                     task.put("candidateReferers", candidateArray(candidateReferers));
+                } else {
+                    task.remove("candidateReferers");
                 }
                 task.put("updatedAt", System.currentTimeMillis());
             } catch (JSONException error) {
@@ -243,6 +247,8 @@ final class TaskStore {
                 task.put("downloaded", 0L);
                 task.put("total", -1L);
                 task.put("error", "");
+                task.remove("failedCandidateUrls");
+                task.put("playbackStarted", false);
                 task.put("updatedAt", System.currentTimeMillis());
             } catch (JSONException error) {
                 throw new IllegalStateException(error);
@@ -279,6 +285,59 @@ final class TaskStore {
                 task.put("total", -1L);
                 task.put("output", "");
                 task.put("error", "");
+                task.remove("failedCandidateUrls");
+                task.put("playbackStarted", false);
+                task.put("referer", candidateRefererAt(task, nextIndex, task.optString("referer", ""), previousUrl));
+                task.put("headersJson", normalizeHeadersJson(task.optString("headersJson", "{}")));
+                task.put("updatedAt", System.currentTimeMillis());
+            } catch (JSONException error) {
+                throw new IllegalStateException(error);
+            }
+            saveTasks(tasks);
+            return task;
+        }
+        return null;
+    }
+
+    synchronized JSONObject retryNextCandidateAfterFailure(String taskId, String failureMessage) {
+        if (taskId == null || taskId.isEmpty()) {
+            return null;
+        }
+        JSONArray tasks = loadTasks();
+        for (int i = tasks.length() - 1; i >= 0; i--) {
+            JSONObject task = tasks.optJSONObject(i);
+            if (task == null || !taskId.equals(task.optString("id"))) {
+                continue;
+            }
+            JSONArray candidateUrls = task.optJSONArray("candidateUrls");
+            if (candidateUrls == null || candidateUrls.length() < 2) {
+                return null;
+            }
+            JSONArray failedCandidates = task.optJSONArray("failedCandidateUrls");
+            if (failedCandidates == null) {
+                failedCandidates = new JSONArray();
+            }
+            String current = firstNonEmpty(task.optString("resolvedUrl", ""), task.optString("url", ""));
+            if (!current.isEmpty() && !containsCandidate(failedCandidates, current)) {
+                failedCandidates.put(current);
+            }
+            String nextUrl = nextUnfailedCandidateUrl(task, candidateUrls, failedCandidates);
+            if (nextUrl.isEmpty()) {
+                return null;
+            }
+            int nextIndex = candidateIndex(candidateUrls, nextUrl);
+            String previousUrl = task.optString("url", "");
+            try {
+                task.put("url", nextUrl);
+                task.put("status", STATUS_QUEUED);
+                task.put("message", text(R.string.task_message_alternate));
+                task.put("resolvedUrl", nextUrl);
+                task.put("downloaded", 0L);
+                task.put("total", -1L);
+                task.put("output", "");
+                task.put("error", failureMessage == null ? "" : compactLabel(failureMessage));
+                task.put("failedCandidateUrls", failedCandidates);
+                task.put("playbackStarted", false);
                 task.put("referer", candidateRefererAt(task, nextIndex, task.optString("referer", ""), previousUrl));
                 task.put("headersJson", normalizeHeadersJson(task.optString("headersJson", "{}")));
                 task.put("updatedAt", System.currentTimeMillis());
@@ -351,6 +410,8 @@ final class TaskStore {
                 task.put("total", -1L);
                 task.put("output", "");
                 task.put("error", "");
+                task.remove("failedCandidateUrls");
+                task.put("playbackStarted", false);
                 task.put("referer", candidateRefererAt(task, selectedIndex, task.optString("referer", ""), previousUrl));
                 task.put("headersJson", normalizeHeadersJson(task.optString("headersJson", "{}")));
                 task.put("updatedAt", System.currentTimeMillis());
@@ -537,6 +598,20 @@ final class TaskStore {
             int index = (start + offset) % candidateUrls.length();
             String candidate = candidateUrls.optString(index, "");
             if (!candidate.isEmpty() && !candidate.equals(current)) {
+                return candidate;
+            }
+        }
+        return "";
+    }
+
+    private String nextUnfailedCandidateUrl(JSONObject task, JSONArray candidateUrls, JSONArray failedCandidates) {
+        String current = firstNonEmpty(task.optString("resolvedUrl", ""), task.optString("url", ""));
+        int currentIndex = candidateIndex(candidateUrls, current);
+        int start = currentIndex < 0 ? 0 : currentIndex + 1;
+        for (int offset = 0; offset < candidateUrls.length(); offset++) {
+            int index = (start + offset) % candidateUrls.length();
+            String candidate = candidateUrls.optString(index, "");
+            if (!candidate.isEmpty() && !containsCandidate(failedCandidates, candidate)) {
                 return candidate;
             }
         }
