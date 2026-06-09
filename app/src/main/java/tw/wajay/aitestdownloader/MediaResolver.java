@@ -224,7 +224,7 @@ final class MediaResolver {
         if (lowered.contains("bilibili.com") || lowered.contains("b23.tv")) {
             return "bilibili";
         }
-        if (lowered.contains("iqiyi.com")) {
+        if (lowered.contains("iqiyi.com") || lowered.equals("iq.com") || lowered.endsWith(".iq.com")) {
             return "iqiyi";
         }
         if (lowered.contains("ikanbot")) {
@@ -238,6 +238,9 @@ final class MediaResolver {
         }
         if (lowered.contains("facebook.com") || lowered.contains("fb.watch")) {
             return "facebook";
+        }
+        if (lowered.contains("threads.net")) {
+            return "threads";
         }
         if (lowered.contains("twitter.com") || lowered.contains("x.com")
                 || lowered.contains("vxtwitter.com") || lowered.contains("fxtwitter.com")) {
@@ -1392,7 +1395,7 @@ final class MediaResolver {
     }
 
     private static boolean isSocialSite(String site) {
-        return "instagram".equals(site) || "facebook".equals(site) || "twitter".equals(site);
+        return "instagram".equals(site) || "facebook".equals(site) || "threads".equals(site) || "twitter".equals(site);
     }
 
     private static boolean isSocialMediaCandidate(String site, String url) {
@@ -1405,6 +1408,9 @@ final class MediaResolver {
         }
         if ("facebook".equals(site)) {
             return lowered.contains("fbcdn") || lowered.contains("fbsbx") || lowered.contains("/video/");
+        }
+        if ("threads".equals(site)) {
+            return lowered.contains("cdninstagram") || lowered.contains("fbcdn") || lowered.contains("/video/");
         }
         if ("twitter".equals(site)) {
             return lowered.contains("video.twimg.com") || lowered.contains("/ext_tw_video/");
@@ -1474,6 +1480,10 @@ final class MediaResolver {
             }
         } else if ("facebook".equals(sourceSite)) {
             if (lowered.contains("fbcdn") || lowered.contains("fbsbx")) {
+                score -= 80;
+            }
+        } else if ("threads".equals(sourceSite)) {
+            if (lowered.contains("cdninstagram") || lowered.contains("fbcdn")) {
                 score -= 80;
             }
         } else if ("twitter".equals(sourceSite)) {
@@ -1574,6 +1584,7 @@ final class MediaResolver {
         if (lowered.contains("tinyavideo")) return "tinyavideo";
         if (lowered.contains("goodav17")) return "goodav17";
         if (lowered.contains("hohoj")) return "hohoj";
+        if (lowered.contains("hayav")) return "hayav";
         if (lowered.contains("ggjav")) return "ggjav";
         if (lowered.contains("tktube")) return "tktube";
         if (lowered.contains("ppp.porn")) return "ppp.porn";
@@ -1609,6 +1620,7 @@ final class MediaResolver {
                 || "tinyavideo".equals(site)
                 || "goodav17".equals(site)
                 || "hohoj".equals(site)
+                || "hayav".equals(site)
                 || "ggjav".equals(site)
                 || "tktube".equals(site)
                 || "ppp.porn".equals(site);

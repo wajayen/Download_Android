@@ -2,7 +2,7 @@
 
 `Download_Android` 是 Windows 版「下載者」的 Android 原生移植專案。目標是在手機上提供接近桌面版的影片搜尋、解析、下載、續傳、播放與診斷能力，同時維持 Android 友善的操作方式。
 
-目前 Android 版本：`0.170.0`（`versionCode 170`）。
+目前 Android 版本：`0.180.0`（`versionCode 180`）。
 
 ## App 特色
 
@@ -52,6 +52,16 @@
 - v0.168.0: Instagram `/reel/`、`/p/` 頁面新增桌面版同源的 shortcode 解析，依序嘗試頁面候選、embed/captioned 頁與 media info API 抽取 HLS/MP4 候選。
 - v0.169.0: Facebook `/reel/`、`/watch/`、`/videos/` 與 `fb.watch` 頁面新增桌面版同源的 GraphQL payload fallback，從頁面與 GraphQL JSON 中抽取 HLS/MP4 候選。
 - v0.170.0: Dailymotion 與 `dai.ly` 影片頁新增 Android 輕量替代解析，透過 `player/metadata/video/{id}` JSON 抽取 HLS/MP4 候選，降低對 yt-dlp fallback 的依賴。
+- v0.171.0: Bilibili 影片頁新增 Android 輕量替代解析，從 BV/AV 取得 cid 後呼叫 `x/player/playurl`，優先抽取可直接下載的 MP4/HLS 候選並避開分離 DASH 片段。
+- v0.172.0: YouTube 影片頁新增 Android 輕量直連解析，從 `ytInitialPlayerResponse` 讀取免簽名解密的 progressive formats 與 HLS manifest 候選；完整簽名解密與影音分離合併仍保留為後續 yt-dlp parity 工作。
+- v0.173.0: Threads 影片頁新增 Windows 版同源的 `video_versions` 解析，依解析度排序並抽取實際 MP4 候選，避免只停在泛用社群頁面掃描。
+- v0.174.0: 18AV 影片頁新增第一層專用解析，抽取頁面與播放器 script 中的 HLS/MP4/DASH 候選，依 `size` 品質排序並排除 preview/screenshot 類假媒體；受保護播放器深層解密保留為後續項目。
+- v0.175.0: AVBebe 影片與分類頁新增 Windows 版同源的第一層解析，分類頁會先轉入 `/archives/{id}` 影片頁，影片頁會追蹤 hgcloud/masukestin/swd-yu/turbovidhls/turboviplay iframe，抽取 `hls4`、`hls2` 與其他 HLS/MP4/DASH 候選。
+- v0.176.0: 18AV 受保護播放器新增 Windows 版同源的 base/xor 與 AES-CBC player id 解碼，會請求 `play.php?...&id=` 取得實際 HLS/MP4/DASH 候選後再回退頁面掃描。
+- v0.177.0: iQIYI/iQ.com 新增 Android 輕量搜尋與頁面解析支援，`iq.com` 會正確歸類為 iQIYI，搜尋會主動查 `iq.com/search`，album 頁會嘗試轉入 play 頁並抽取頁面 JSON/metadata 內的 HLS/MP4/DASH 候選。
+- v0.178.0: AVJoy 影片頁新增下載引擎專用解析，依 Windows 版優先順序抽取 `hls4`、`hls2` 與其他 HLS 候選，保留 MP4/DASH fallback，並使用 AVJoy 站台根目錄作為下載 Referer。
+- v0.179.0: GoodAV17 / HoHoJ / GGJAV 新增下載引擎共用解析器，會先解析原頁，再抓播放器 iframe 與 GGJAV embed 頁，復用混淆媒體解碼與 `video-N.ggjav.com` 備援候選。
+- v0.180.0: HayAV 新增站台辨識、搜尋入口與下載引擎解析，支援 Windows 版同源的 `data-secret` Base64/XOR 解碼，展開 hglink/dhcplay/hgcloud embed 到 masukestin，並抽取實際 HLS/MP4/DASH 候選。
 
 ## 下載功能
 

@@ -186,6 +186,7 @@ final class VideoSearchResolver {
                 {"777TV", "https://777tv.ai/index.php/vod/search.html?wd=%s"},
                 {"Ikanbot", "https://www1.ikanbot.com/vodsearch/-------------.html?wd=%s"},
                 {"YFSP", "https://www.yfsp.tv/vodsearch/-------------.html?wd=%s"},
+                {"iQIYI", "https://www.iq.com/search?query=%s&lang=zh_tw"},
                 {"MissAV", "https://missav.ws/search/%s"},
                 {"Jable", "https://jable.tv/search/%s/"},
                 {"NJAV", "https://www.njav.com/search?keyword=%s"},
@@ -201,6 +202,7 @@ final class VideoSearchResolver {
                 {"TinyAVideo", "https://tinyavideo.com/search/%s"},
                 {"GoodAV17", "https://goodav17.com/search/%s"},
                 {"HoHoJ", "https://hohoj.tv/search/%s"},
+                {"HayAV", "https://hayav.com/?s=%s"},
                 {"GGJAV", "https://ggjav.com/search/%s"},
                 {"TKTube", "https://tktube.com/search/%s"}
         };
@@ -223,6 +225,7 @@ final class VideoSearchResolver {
                 {"TinyAVideo", "https://tinyavideo.com/search/%s"},
                 {"GoodAV17", "https://goodav17.com/search/%s"},
                 {"HoHoJ", "https://hohoj.tv/search/%s"},
+                {"HayAV", "https://hayav.com/?s=%s"},
                 {"GGJAV", "https://ggjav.com/search/%s"},
                 {"TKTube", "https://tktube.com/search/%s"},
                 {"MovieFFM", "https://www.movieffm.net/?s=%s"},
@@ -248,6 +251,7 @@ final class VideoSearchResolver {
                 {"SupJAV", "https://supjav.com/" + compact + ".html"},
                 {"AVBebe", "https://avbebe.com/video/" + upperSlug},
                 {"AVJoy", "https://avjoy.me/video/" + slug},
+                {"HayAV", "https://hayav.com/video/chinese-subtitles/" + slug + "c/"},
                 {"JavDock", "https://www.javdock.com/video/" + slug},
                 {"BestJavPorn", "https://bestjavporn.com/video/" + slug + "/"},
                 {"JavFilms", "https://javfilms.com/video/" + slug + "/"},
@@ -268,11 +272,11 @@ final class VideoSearchResolver {
         queries.add(query + " download video");
         queries.add(query + " m3u8 mp4");
         String[] sites = new String[]{
-                "movieffm.net", "gimy", "xiaoyakankan.com", "dramasq", "olevod.com",
+                "movieffm.net", "gimy", "xiaoyakankan.com", "iq.com", "dramasq", "olevod.com",
                 "3kor.com", "99itv.net", "nnyy.in", "missav", "jable.tv", "njav",
                 "supjav.com", "bestjavporn.com", "javdock.com", "javfilms.com",
                 "18jav.tv", "85xvideo.com", "avbebe.com", "avjoy.me", "tinyavideo.com",
-                "goodav17.com", "hohoj.tv", "ggjav.com", "tktube.com"
+                "goodav17.com", "hohoj.tv", "hayav.com", "ggjav.com", "tktube.com"
         };
         for (String site : sites) {
             queries.add(query + " site:" + site);
@@ -612,7 +616,7 @@ final class VideoSearchResolver {
                 "/voddetail/", "/voddetail2/", "/vodplay/", "/vod/",
                 "/index.php/vod/detail/", "/index.php/vod/play/",
                 "/detail/", "/details/", "/title/", "/play/", "/watch/",
-                "/video/", "/videos/", "/movie/", "/drama/", "/episode/",
+                "/video/", "/videos/", "/movie/", "/drama/", "/album/", "/episode/",
                 "/eps/", "/xvideos/", "/archives/", "/html/", "/vr_html/",
                 "/dm", "/fc2-ppv-", "/fc2ppv-"
         };

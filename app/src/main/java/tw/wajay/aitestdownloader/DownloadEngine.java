@@ -130,6 +130,9 @@ final class DownloadEngine {
     private static final Pattern OLEVOD_PLAY_LINK = Pattern.compile(
             "href=[\"']([^\"']*/index\\.php/vod/play/id/\\d+/sid/\\d+/nid/\\d+\\.html)[\"']",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern IQIYI_PLAY_LINK = Pattern.compile(
+            "href=[\"']([^\"']*(?:/(?:play|album)/)[^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern DRAMASQ_DETAIL_PATH = Pattern.compile("/detail/\\d+\\.html$", Pattern.CASE_INSENSITIVE);
     private static final Pattern DRAMASQ_PLAY_PATH = Pattern.compile("/vodplay/(\\d+)/(ep\\d+)\\.html$", Pattern.CASE_INSENSITIVE);
     private static final Pattern DRAMASQ_PLAY_LINK = Pattern.compile(
@@ -166,6 +169,46 @@ final class DownloadEngine {
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern DAILYMOTION_VIDEO_PATH = Pattern.compile(
             "(?:/video/|/embed/video/|^/)([A-Za-z0-9]+)",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern BILIBILI_BVID = Pattern.compile("(BV[0-9A-Za-z]{10})", Pattern.CASE_INSENSITIVE);
+    private static final Pattern BILIBILI_AID_PATH = Pattern.compile("/video/av(\\d+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern YOUTUBE_PLAYER_RESPONSE_START = Pattern.compile(
+            "(?:var\\s+)?ytInitialPlayerResponse\\s*=\\s*\\{",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern THREADS_VIDEO_VERSIONS_START = Pattern.compile(
+            "\"video_versions\"\\s*:\\s*\\[",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern EIGHTEEN_AV_QUALITY_SRC = Pattern.compile(
+            "src\\s*:\\s*['\"]([^'\"]+\\.m3u8[^'\"]*)['\"][^{};\\n]{0,240}?size\\s*:\\s*['\"]?(\\d{3,4})['\"]?|size\\s*:\\s*['\"]?(\\d{3,4})['\"]?[^{};\\n]{0,240}?src\\s*:\\s*['\"]([^'\"]+\\.m3u8[^'\"]*)['\"]",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern EIGHTEEN_AV_IFRAME_PREFIX = Pattern.compile(
+            "//18av\\.mm-cg\\.com/js/player/play\\.php\\?numresolution=\\d+&id=",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern EIGHTEEN_AV_ENCODED_PLAYER_ID = Pattern.compile(
+            "mvarr\\['[^']+'\\]\\s*=\\s*\\[\\[['\"](?:a_iframe_id_[^'\"]+)['\"],['\"]([^'\"]+)['\"]",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern EIGHTEEN_AV_XOR_VALUE = Pattern.compile("\\bhadeedg252\\s*=\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern EIGHTEEN_AV_BASE_VALUE = Pattern.compile("\\bhcdeedg252\\s*=\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern EIGHTEEN_AV_AES_KEY = Pattern.compile("\\bargdeqweqweqwe\\s*=\\s*['\"]([^'\"]+)['\"]", Pattern.CASE_INSENSITIVE);
+    private static final Pattern EIGHTEEN_AV_AES_IV = Pattern.compile("\\bhdddedg252\\s*=\\s*['\"]([^'\"]+)['\"]", Pattern.CASE_INSENSITIVE);
+    private static final Pattern AVJOY_HLS_FIELD = Pattern.compile(
+            "[\"'](hls\\d+)['\"]\\s*:\\s*['\"]([^'\"]+)['\"]",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern PLAYER_IFRAME_SRC = Pattern.compile(
+            "<iframe\\b[^>]+(?:src|data-src)=[\"']([^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern HAYAV_DATA_SECRET = Pattern.compile("data-secret=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    private static final Pattern EMBED_LINK_QUOTED = Pattern.compile("(?:src|href)=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    private static final Pattern EMBED_LINK_UNQUOTED = Pattern.compile("(?:src|href)=([^\\s\"'<>]+)", Pattern.CASE_INSENSITIVE);
+    private static final String HAYAV_SECRET_KEY = "MySuperSecretKey2026";
+    private static final Pattern AVBEBE_ARCHIVE_LINK = Pattern.compile(
+            "(?:href|data-href|data-url)=[\"']([^\"']*/archives/\\d+[^\"']*)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern AVBEBE_IFRAME_SRC = Pattern.compile(
+            "<iframe\\b[^>]+\\bsrc=[\"']([^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern AVBEBE_HLS_FIELD = Pattern.compile(
+            "[\"'](hls\\d+)[\"']\\s*:\\s*[\"']([^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE);
     private static final int SEGMENT_RETRY_LIMIT = 3;
     private static final int PAGE_RESOLVE_DEPTH_LIMIT = 4;
@@ -218,6 +261,50 @@ final class DownloadEngine {
             this.lsd = lsd;
             this.docId = docId;
             this.variables = variables;
+        }
+    }
+
+    private static final class BilibiliVideoInfo {
+        final String bvid;
+        final String aid;
+        final String cid;
+
+        BilibiliVideoInfo(String bvid, String aid, String cid) {
+            this.bvid = bvid == null ? "" : bvid;
+            this.aid = aid == null ? "" : aid;
+            this.cid = cid == null ? "" : cid;
+        }
+    }
+
+    private static final class ThreadsVideoCandidate {
+        final int area;
+        final String url;
+
+        ThreadsVideoCandidate(int area, String url) {
+            this.area = area;
+            this.url = url;
+        }
+    }
+
+    private static final class QualityCandidate {
+        final int quality;
+        final String url;
+
+        QualityCandidate(int quality, String url) {
+            this.quality = quality;
+            this.url = url;
+        }
+    }
+
+    private static final class Protected18AvPlayer {
+        final String iframePrefix;
+        final String encodedId;
+        final String decodedPayload;
+
+        Protected18AvPlayer(String iframePrefix, String encodedId, String decodedPayload) {
+            this.iframePrefix = iframePrefix == null ? "" : iframePrefix;
+            this.encodedId = encodedId == null ? "" : encodedId;
+            this.decodedPayload = decodedPayload == null ? "" : decodedPayload;
         }
     }
 
@@ -935,6 +1022,21 @@ final class DownloadEngine {
         if ("18jav".equals(site)) {
             return resolve18JavMedia(pageUrl, pageText);
         }
+        if ("18av".equals(site)) {
+            return resolve18AvMedia(pageUrl, pageText);
+        }
+        if ("avbebe".equals(site)) {
+            return resolveAvbebeMedia(pageUrl, pageText);
+        }
+        if ("avjoy".equals(site)) {
+            return resolveAvJoyMedia(pageUrl, pageText);
+        }
+        if ("goodav17".equals(site) || "hohoj".equals(site) || "ggjav".equals(site)) {
+            return resolveGgJavBackedMedia(site, pageUrl, pageText);
+        }
+        if ("hayav".equals(site)) {
+            return resolveHayAvMedia(pageUrl, pageText);
+        }
         if ("hanime1".equals(site)) {
             return resolveHanime1Media(pageUrl, pageText);
         }
@@ -983,8 +1085,20 @@ final class DownloadEngine {
         if ("facebook".equals(site)) {
             return resolveFacebookMedia(pageUrl, pageText);
         }
+        if ("threads".equals(site)) {
+            return resolveThreadsMedia(pageUrl, pageText);
+        }
         if ("dailymotion".equals(site)) {
             return resolveDailymotionMedia(pageUrl, pageText);
+        }
+        if ("bilibili".equals(site)) {
+            return resolveBilibiliMedia(pageUrl, pageText);
+        }
+        if ("iqiyi".equals(site)) {
+            return resolveIqiyiMedia(pageUrl, pageText);
+        }
+        if ("youtube".equals(site)) {
+            return resolveYoutubeMedia(pageUrl, pageText);
         }
         return null;
     }
@@ -1398,6 +1512,539 @@ final class DownloadEngine {
             return null;
         }
         return new SiteMediaResult("18jav", candidates.get(0), candidates, pageUrl);
+    }
+
+    private SiteMediaResult resolve18AvMedia(String pageUrl, String pageText) {
+        String text = htmlDecoded(pageText == null ? "" : pageText).replace("\\/", "/").replace("\\u002F", "/");
+        List<String> candidates = new ArrayList<>();
+        List<QualityCandidate> qualityCandidates = new ArrayList<>();
+        Matcher qualityMatcher = EIGHTEEN_AV_QUALITY_SRC.matcher(text);
+        while (qualityMatcher.find()) {
+            String rawUrl = firstNonEmpty(qualityMatcher.group(1), qualityMatcher.group(4));
+            int quality = parseInt(firstNonEmpty(qualityMatcher.group(2), qualityMatcher.group(3)), 0);
+            String candidate = joinUrl(pageUrl, rawUrl);
+            if (isMediaUrl(candidate) && !isPreviewMediaUrl(candidate) && !looksLikeImageUrl(candidate)) {
+                qualityCandidates.add(new QualityCandidate(quality, candidate));
+            }
+        }
+        Collections.sort(qualityCandidates, Comparator.comparingInt((QualityCandidate item) -> item.quality).reversed());
+        for (QualityCandidate candidate : qualityCandidates) {
+            addUnique(candidates, candidate.url);
+        }
+        try {
+            for (String candidate : resolve18AvProtectedPlayerCandidates(pageUrl, text)) {
+                if (isMediaUrl(candidate) && !isPreviewMediaUrl(candidate) && !looksLikeImageUrl(candidate)) {
+                    addUnique(candidates, candidate);
+                }
+            }
+        } catch (IOException ignored) {
+            // Keep page/player-script candidates available when the protected endpoint rejects mobile requests.
+        }
+        for (String candidate : extractMediaCandidates(text, pageUrl)) {
+            if (isMediaUrl(candidate) && !isPreviewMediaUrl(candidate) && !looksLikeImageUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("18av", candidates.get(0), candidates, pageUrl);
+    }
+
+    private List<String> resolve18AvProtectedPlayerCandidates(String pageUrl, String pageText) throws IOException {
+        Protected18AvPlayer player = extract18AvProtectedPlayer(pageText);
+        if (player.iframePrefix.isEmpty()) {
+            return new ArrayList<>();
+        }
+        String siteRoot = originFromUrl(pageUrl);
+        String playerBase = joinUrl(firstNonEmpty(siteRoot, "https://18av.mm-cg.com") + "/", player.iframePrefix);
+        List<String> playerIds = new ArrayList<>();
+        addUnique(playerIds, player.decodedPayload);
+        addUnique(playerIds, player.encodedId);
+        addUnique(playerIds, "");
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Cookie", "javascript_cookie_AgreeTOS_save1=javascript_cookie_AgreeTOS_save2");
+        List<String> candidates = new ArrayList<>();
+        for (String playerId : playerIds) {
+            String probeUrl = playerBase + urlEncode(playerId);
+            try {
+                String probeText = readText(probeUrl, pageUrl, headers);
+                for (String candidate : extract18AvPlayerCandidates(probeText, probeUrl)) {
+                    addUnique(candidates, candidate);
+                }
+            } catch (IOException ignored) {
+                // Try the next decoded id form.
+            }
+            if (!candidates.isEmpty()) {
+                break;
+            }
+        }
+        return prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+    }
+
+    private Protected18AvPlayer extract18AvProtectedPlayer(String pageText) {
+        String text = pageText == null ? "" : pageText;
+        String iframePrefix = "";
+        Matcher prefixMatcher = EIGHTEEN_AV_IFRAME_PREFIX.matcher(text);
+        if (prefixMatcher.find()) {
+            iframePrefix = prefixMatcher.group(0);
+        }
+        String encodedId = firstMatch(text, EIGHTEEN_AV_ENCODED_PLAYER_ID);
+        String decodedPayload = decrypt18AvPlayerId(
+                encodedId,
+                firstMatch(text, EIGHTEEN_AV_BASE_VALUE),
+                firstMatch(text, EIGHTEEN_AV_XOR_VALUE),
+                firstMatch(text, EIGHTEEN_AV_AES_KEY),
+                firstMatch(text, EIGHTEEN_AV_AES_IV));
+        return new Protected18AvPlayer(iframePrefix, encodedId, decodedPayload);
+    }
+
+    private String decrypt18AvPlayerId(String encodedValue, String baseValue, String xorValue, String aesKey, String aesIv) {
+        String stage1 = decode18AvPayload(encodedValue, baseValue, xorValue);
+        if (stage1.isEmpty() || aesKey == null || aesIv == null || aesKey.isEmpty() || aesIv.isEmpty()) {
+            return stage1;
+        }
+        try {
+            byte[] encrypted = Base64.decode(stage1, Base64.DEFAULT);
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            cipher.init(Cipher.DECRYPT_MODE,
+                    new SecretKeySpec(aesKey.getBytes(StandardCharsets.UTF_8), "AES"),
+                    new IvParameterSpec(aesIv.getBytes(StandardCharsets.UTF_8)));
+            return new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8).trim();
+        } catch (GeneralSecurityException | IllegalArgumentException ignored) {
+            return stage1;
+        }
+    }
+
+    private String decode18AvPayload(String encodedValue, String baseValue, String xorValue) {
+        String encoded = encodedValue == null ? "" : encodedValue.trim();
+        if (encoded.isEmpty()) {
+            return "";
+        }
+        int base = parseInt(baseValue, 0);
+        int xor = parseInt(xorValue, -1);
+        if (base < 2 || base > 36 || xor < 0) {
+            return "";
+        }
+        String[] parts = encoded.split(Pattern.quote(String.valueOf((char) (base + 97))));
+        StringBuilder builder = new StringBuilder();
+        try {
+            for (String part : parts) {
+                if (!part.isEmpty()) {
+                    builder.append((char) (Integer.parseInt(part, base) ^ xor));
+                }
+            }
+        } catch (NumberFormatException ignored) {
+            return "";
+        }
+        return builder.toString();
+    }
+
+    private List<String> extract18AvPlayerCandidates(String playerText, String playerUrl) {
+        String text = htmlDecoded(playerText == null ? "" : playerText).replace("\\/", "/").replace("\\u002F", "/");
+        List<String> candidates = new ArrayList<>();
+        List<QualityCandidate> qualityCandidates = new ArrayList<>();
+        Matcher qualityMatcher = EIGHTEEN_AV_QUALITY_SRC.matcher(text);
+        while (qualityMatcher.find()) {
+            String rawUrl = firstNonEmpty(qualityMatcher.group(1), qualityMatcher.group(4));
+            int quality = parseInt(firstNonEmpty(qualityMatcher.group(2), qualityMatcher.group(3)), 0);
+            String candidate = joinUrl(playerUrl, rawUrl);
+            if (isMediaUrl(candidate) && !isPreviewMediaUrl(candidate) && !looksLikeImageUrl(candidate)) {
+                qualityCandidates.add(new QualityCandidate(quality, candidate));
+            }
+        }
+        Collections.sort(qualityCandidates, Comparator.comparingInt((QualityCandidate item) -> item.quality).reversed());
+        for (QualityCandidate candidate : qualityCandidates) {
+            addUnique(candidates, candidate.url);
+        }
+        for (String candidate : extractMediaCandidates(text, playerUrl)) {
+            if (isMediaUrl(candidate) && !isPreviewMediaUrl(candidate) && !looksLikeImageUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        return prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+    }
+
+    private SiteMediaResult resolveAvbebeMedia(String pageUrl, String pageText) throws IOException {
+        if (isAvbebeCategoryPage(pageUrl)) {
+            for (String detailUrl : extractAvbebeArchiveLinks(pageUrl, pageText)) {
+                try {
+                    SiteMediaResult detailMedia = resolveAvbebeMedia(detailUrl, readText(detailUrl, pageUrl));
+                    if (detailMedia != null) {
+                        return detailMedia;
+                    }
+                } catch (IOException ignored) {
+                    // Try the next archive item; category pages often contain stale entries.
+                }
+            }
+        }
+
+        List<String> candidates = new ArrayList<>();
+        String firstReferer = "";
+        for (String candidate : extractAvbebeStreamCandidates(pageText, pageUrl)) {
+            addUnique(candidates, candidate);
+            if (firstReferer.isEmpty()) {
+                firstReferer = pageUrl;
+            }
+        }
+
+        for (String iframeUrl : extractAvbebeIframeUrls(pageUrl, pageText)) {
+            String playerUrl = avbebeEmbedUrl(iframeUrl);
+            if (playerUrl.isEmpty() || (!isAvbebePlayableIframe(playerUrl) && !isAvbebeRetryableIframe(playerUrl))) {
+                continue;
+            }
+            try {
+                String playerText = readText(playerUrl, pageUrl);
+                for (String candidate : extractAvbebeStreamCandidates(playerText, playerUrl)) {
+                    if (candidates.isEmpty() || firstReferer.isEmpty()) {
+                        firstReferer = playerUrl;
+                    }
+                    addUnique(candidates, candidate);
+                }
+            } catch (IOException ignored) {
+                // Protected Avbebe mirrors rotate often; keep other iframe mirrors alive.
+            }
+        }
+
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("avbebe", candidates.get(0), candidates, firstNonEmpty(firstReferer, pageUrl));
+    }
+
+    private boolean isAvbebeCategoryPage(String rawUrl) {
+        try {
+            String path = new URL(rawUrl).getPath();
+            return path != null && path.toLowerCase(Locale.US).contains("/archives/category");
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private List<String> extractAvbebeArchiveLinks(String pageUrl, String pageText) {
+        List<String> out = new ArrayList<>();
+        Matcher matcher = AVBEBE_ARCHIVE_LINK.matcher(pageText == null ? "" : pageText);
+        while (matcher.find()) {
+            String candidate = joinUrl(pageUrl, htmlDecoded(matcher.group(1)).trim());
+            if (!candidate.isEmpty()) {
+                addUnique(out, candidate);
+            }
+        }
+        return out;
+    }
+
+    private List<String> extractAvbebeIframeUrls(String pageUrl, String pageText) {
+        List<String> out = new ArrayList<>();
+        Matcher matcher = AVBEBE_IFRAME_SRC.matcher(pageText == null ? "" : pageText);
+        while (matcher.find()) {
+            String candidate = joinUrl(pageUrl, htmlDecoded(matcher.group(1)).trim());
+            if (candidate.isEmpty() || isAvbebeAdIframe(candidate)) {
+                continue;
+            }
+            addUnique(out, candidate);
+        }
+        Collections.sort(out, new Comparator<String>() {
+            @Override
+            public int compare(String left, String right) {
+                return Integer.compare(avbebeIframePriority(left), avbebeIframePriority(right));
+            }
+        });
+        return out;
+    }
+
+    private List<String> extractAvbebeStreamCandidates(String pageText, String pageUrl) {
+        String text = htmlDecoded(pageText == null ? "" : pageText)
+                .replace("\\/", "/")
+                .replace("\\u002F", "/");
+        List<QualityCandidate> hlsFields = new ArrayList<>();
+        Matcher hlsMatcher = AVBEBE_HLS_FIELD.matcher(text);
+        while (hlsMatcher.find()) {
+            String fieldName = hlsMatcher.group(1).toLowerCase(Locale.US);
+            String candidate = joinUrl(pageUrl, htmlDecoded(hlsMatcher.group(2)).trim());
+            if (isMediaUrl(candidate) && !looksLikeImageUrl(candidate) && !isPreviewMediaUrl(candidate)) {
+                hlsFields.add(new QualityCandidate(1000 - avbebeHlsPriority(fieldName), candidate));
+            }
+        }
+        Collections.sort(hlsFields, Comparator.comparingInt((QualityCandidate item) -> item.quality).reversed());
+
+        List<String> candidates = new ArrayList<>();
+        for (QualityCandidate candidate : hlsFields) {
+            addUnique(candidates, candidate.url);
+        }
+        for (String candidate : extractMediaCandidates(text, pageUrl)) {
+            if (isMediaUrl(candidate) && !looksLikeImageUrl(candidate) && !isPreviewMediaUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        return prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+    }
+
+    private int avbebeHlsPriority(String fieldName) {
+        if ("hls4".equals(fieldName)) {
+            return 0;
+        }
+        if ("hls2".equals(fieldName)) {
+            return 10;
+        }
+        return 20;
+    }
+
+    private int avbebeIframePriority(String rawUrl) {
+        String lowered = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        if (lowered.contains("masukestin.com") || lowered.contains("swdyu.com")
+                || lowered.contains("dhcplay.com") || lowered.contains("hglink.to")
+                || lowered.contains("hgcloud.to")) {
+            return 0;
+        }
+        if (lowered.contains("turbovidhls") || lowered.contains("turboviplay")) {
+            return 10;
+        }
+        return 50;
+    }
+
+    private boolean isAvbebePlayableIframe(String rawUrl) {
+        String lowered = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        return lowered.contains("turbovidhls") || lowered.contains("turboviplay");
+    }
+
+    private boolean isAvbebeRetryableIframe(String rawUrl) {
+        String lowered = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        return lowered.contains("masukestin.com") || lowered.contains("swdyu.com")
+                || lowered.contains("dhcplay.com") || lowered.contains("hglink.to")
+                || lowered.contains("hgcloud.to");
+    }
+
+    private boolean isAvbebeAdIframe(String rawUrl) {
+        String lowered = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        return lowered.contains("ads") || lowered.contains("adsterra") || lowered.contains("popads")
+                || lowered.contains("doubleclick") || lowered.contains("googlesyndication");
+    }
+
+    private String avbebeEmbedUrl(String rawUrl) {
+        if (rawUrl == null || rawUrl.trim().isEmpty()) {
+            return "";
+        }
+        try {
+            URL parsed = new URL(rawUrl);
+            String host = parsed.getHost() == null ? "" : parsed.getHost().toLowerCase(Locale.US);
+            if (host.contains("dhcplay.com") || host.contains("hglink.to") || host.contains("hgcloud.to")) {
+                return new URL(parsed.getProtocol(), "masukestin.com", parsed.getPort(),
+                        firstNonEmpty(parsed.getFile(), parsed.getPath())).toString();
+            }
+            return rawUrl.trim();
+        } catch (MalformedURLException ignored) {
+            return rawUrl.trim();
+        }
+    }
+
+    private SiteMediaResult resolveAvJoyMedia(String pageUrl, String pageText) {
+        if (!pagePathContains(pageUrl, "/video/")) {
+            return mediaFromMediaResolver("avjoy", pageUrl, pageText, avJoyReferer(pageUrl));
+        }
+        String text = htmlDecoded(pageText == null ? "" : pageText)
+                .replace("\\/", "/")
+                .replace("\\u002F", "/");
+        List<String> candidates = new ArrayList<>();
+        List<QualityCandidate> hlsCandidates = new ArrayList<>();
+        Matcher hlsMatcher = AVJOY_HLS_FIELD.matcher(text);
+        while (hlsMatcher.find()) {
+            String fieldName = hlsMatcher.group(1).toLowerCase(Locale.US);
+            String candidate = joinUrl(pageUrl, htmlDecoded(hlsMatcher.group(2)).trim());
+            if (isHlsUrl(candidate) && !looksLikeImageUrl(candidate) && !isPreviewMediaUrl(candidate)) {
+                hlsCandidates.add(new QualityCandidate(1000 - avJoyHlsPriority(fieldName), candidate));
+            }
+        }
+        Collections.sort(hlsCandidates, Comparator.comparingInt((QualityCandidate item) -> item.quality).reversed());
+        for (QualityCandidate candidate : hlsCandidates) {
+            addUnique(candidates, candidate.url);
+        }
+
+        SiteMediaResult pageMedia = mediaFromMediaResolver("avjoy", pageUrl, text, avJoyReferer(pageUrl));
+        if (pageMedia != null) {
+            for (String candidate : pageMedia.candidates) {
+                if (isMediaUrl(candidate) && !looksLikeImageUrl(candidate) && !isPreviewMediaUrl(candidate)) {
+                    addUnique(candidates, candidate);
+                }
+            }
+        }
+        for (String candidate : extractMediaCandidates(text, pageUrl)) {
+            if (isMediaUrl(candidate) && !looksLikeImageUrl(candidate) && !isPreviewMediaUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("avjoy", candidates.get(0), candidates, avJoyReferer(pageUrl));
+    }
+
+    private int avJoyHlsPriority(String fieldName) {
+        if ("hls4".equals(fieldName)) {
+            return 0;
+        }
+        if ("hls2".equals(fieldName)) {
+            return 10;
+        }
+        return 20;
+    }
+
+    private String avJoyReferer(String pageUrl) {
+        return firstNonEmpty(originFromUrl(pageUrl), "https://avjoy.me") + "/";
+    }
+
+    private SiteMediaResult resolveGgJavBackedMedia(String sourceSite, String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        String firstReferer = pageUrl;
+        SiteMediaResult pageMedia = mediaFromMediaResolver(sourceSite, pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+
+        for (String iframeUrl : extractPlayerIframeUrls(pageUrl, pageText)) {
+            String iframeSite = MediaResolver.sourceSite(iframeUrl);
+            if (!"ggjav".equals(iframeSite) && !"goodav17".equals(iframeSite) && !"hohoj".equals(iframeSite)) {
+                continue;
+            }
+            try {
+                String iframeText = readText(iframeUrl, pageUrl);
+                SiteMediaResult iframeMedia = mediaFromMediaResolver(sourceSite, iframeUrl, iframeText, iframeUrl);
+                if (iframeMedia != null) {
+                    if (candidates.isEmpty()) {
+                        firstReferer = iframeUrl;
+                    }
+                    candidates.addAll(iframeMedia.candidates);
+                }
+            } catch (IOException ignored) {
+                // Keep page-decoded candidates when a mirror iframe blocks fetching.
+            }
+        }
+
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult(sourceSite, candidates.get(0), candidates, firstReferer);
+    }
+
+    private List<String> extractPlayerIframeUrls(String pageUrl, String pageText) {
+        List<String> out = new ArrayList<>();
+        Matcher matcher = PLAYER_IFRAME_SRC.matcher(pageText == null ? "" : pageText);
+        while (matcher.find()) {
+            String iframeUrl = joinUrl(pageUrl, htmlDecoded(matcher.group(1)).trim());
+            String lowered = iframeUrl.toLowerCase(Locale.US);
+            if (lowered.contains("ggjav.com")
+                    || lowered.contains("goodav17.com")
+                    || lowered.contains("hohoj.tv")
+                    || lowered.contains("/embed")) {
+                addUnique(out, iframeUrl);
+            }
+        }
+        return out;
+    }
+
+    private SiteMediaResult resolveHayAvMedia(String pageUrl, String pageText) {
+        if (!pagePathContains(pageUrl, "/video/")) {
+            return null;
+        }
+        List<String> candidates = new ArrayList<>();
+        String firstReferer = pageUrl;
+        for (String candidate : extractHayAvEmbedCandidates(pageText, pageUrl)) {
+            String embedUrl = avbebeEmbedUrl(candidate);
+            if (isHayAvHgCloudEmbed(embedUrl)) {
+                try {
+                    String embedText = readText(embedUrl, pageUrl);
+                    for (String streamCandidate : extractAvbebeStreamCandidates(embedText, embedUrl)) {
+                        if (candidates.isEmpty()) {
+                            firstReferer = embedUrl;
+                        }
+                        addUnique(candidates, streamCandidate);
+                    }
+                } catch (IOException ignored) {
+                    // Keep the original embed/direct candidate as a fallback.
+                }
+            }
+            if (isMediaUrl(embedUrl) && !isPreviewMediaUrl(embedUrl) && !looksLikeImageUrl(embedUrl)) {
+                addUnique(candidates, embedUrl);
+            }
+        }
+
+        SiteMediaResult pageMedia = mediaFromMediaResolver("hayav", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("hayav", candidates.get(0), candidates, firstReferer);
+    }
+
+    private List<String> extractHayAvEmbedCandidates(String pageText, String pageUrl) {
+        List<String> candidates = new ArrayList<>();
+        String text = pageText == null ? "" : pageText;
+        Matcher secretMatcher = HAYAV_DATA_SECRET.matcher(text);
+        while (secretMatcher.find()) {
+            String decoded = decodeHayAvSecret(htmlDecoded(secretMatcher.group(1)));
+            collectHayAvEmbedLinks(candidates, decoded, pageUrl);
+        }
+        for (String candidate : extractMediaCandidates(text, pageUrl)) {
+            if (isMediaUrl(candidate) && !isPreviewMediaUrl(candidate) && !looksLikeImageUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        return candidates;
+    }
+
+    private void collectHayAvEmbedLinks(List<String> candidates, String decodedHtml, String pageUrl) {
+        for (Pattern pattern : new Pattern[]{EMBED_LINK_QUOTED, EMBED_LINK_UNQUOTED}) {
+            Matcher matcher = pattern.matcher(decodedHtml == null ? "" : decodedHtml);
+            while (matcher.find()) {
+                String candidate = joinUrl(pageUrl, htmlDecoded(matcher.group(1)).replace("\\/", "/").trim());
+                if (!candidate.isEmpty() && !isKnownAdMediaUrl(candidate)) {
+                    addUnique(candidates, candidate);
+                    String mapped = avbebeEmbedUrl(candidate);
+                    if (!mapped.equals(candidate)) {
+                        addUnique(candidates, mapped);
+                    }
+                }
+            }
+        }
+    }
+
+    private String decodeHayAvSecret(String secret) {
+        try {
+            byte[] payload = Base64.decode(secret == null ? "" : secret.trim(), Base64.DEFAULT);
+            byte[] key = HAYAV_SECRET_KEY.getBytes(StandardCharsets.UTF_8);
+            byte[] decoded = new byte[payload.length];
+            for (int i = 0; i < payload.length; i++) {
+                decoded[i] = (byte) (payload[i] ^ key[i % key.length]);
+            }
+            return new String(decoded, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ignored) {
+            return "";
+        }
+    }
+
+    private boolean isHayAvHgCloudEmbed(String rawUrl) {
+        String lowered = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        return (lowered.contains("masukestin.com")
+                || lowered.contains("swdyu.com")
+                || lowered.contains("hgcloud.to")
+                || lowered.contains("hglink.to")
+                || lowered.contains("dhcplay.com"))
+                && lowered.contains("/e/");
+    }
+
+    private boolean isKnownAdMediaUrl(String rawUrl) {
+        String lowered = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        return lowered.contains("ads")
+                || lowered.contains("doubleclick")
+                || lowered.contains("googlesyndication")
+                || lowered.contains("popads")
+                || lowered.contains("adsterra");
     }
 
     private boolean isPreviewMediaUrl(String rawUrl) {
@@ -2573,6 +3220,60 @@ final class DownloadEngine {
         return builder.toString();
     }
 
+    private SiteMediaResult resolveThreadsMedia(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        SiteMediaResult pageMedia = mediaFromMediaResolver("threads", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        candidates.addAll(extractThreadsVideoVersionCandidates(pageText));
+        candidates = dedupeMediaCandidates(candidates);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("threads", candidates.get(0), candidates, pageUrl);
+    }
+
+    private List<String> extractThreadsVideoVersionCandidates(String pageText) {
+        List<ThreadsVideoCandidate> ranked = new ArrayList<>();
+        String text = htmlDecoded(pageText == null ? "" : pageText)
+                .replace("\\\"", "\"")
+                .replace("\\/", "/")
+                .replace("\\u0026", "&");
+        Matcher matcher = THREADS_VIDEO_VERSIONS_START.matcher(text);
+        while (matcher.find()) {
+            String blob = balancedArray(text, matcher.end() - 1);
+            if (blob == null) {
+                continue;
+            }
+            try {
+                JSONArray versions = new JSONArray(blob);
+                for (int i = 0; i < versions.length(); i++) {
+                    JSONObject version = versions.optJSONObject(i);
+                    if (version == null) {
+                        continue;
+                    }
+                    String url = firstNonEmpty(version.optString("url", ""), version.optString("video_url", ""));
+                    String candidate = url == null ? "" : url.replace("\\/", "/").replace("\\u0026", "&").trim();
+                    if (!isMediaUrl(candidate)) {
+                        continue;
+                    }
+                    int width = Math.max(0, version.optInt("width", 0));
+                    int height = Math.max(0, version.optInt("height", 0));
+                    ranked.add(new ThreadsVideoCandidate(width * height, candidate));
+                }
+            } catch (Exception ignored) {
+                // Try the next embedded video_versions block.
+            }
+        }
+        Collections.sort(ranked, Comparator.comparingInt((ThreadsVideoCandidate item) -> item.area).reversed());
+        List<String> candidates = new ArrayList<>();
+        for (ThreadsVideoCandidate candidate : ranked) {
+            addUnique(candidates, candidate.url);
+        }
+        return candidates;
+    }
+
     private SiteMediaResult resolveDailymotionMedia(String pageUrl, String pageText) {
         String videoId = dailymotionVideoIdFromUrl(pageUrl);
         if (videoId.isEmpty()) {
@@ -2610,6 +3311,315 @@ final class DownloadEngine {
             String videoId = htmlDecoded(matcher.group(1)).trim();
             return videoId.matches("[A-Za-z0-9]+") ? videoId : "";
         } catch (MalformedURLException ignored) {
+            return "";
+        }
+    }
+
+    private SiteMediaResult resolveBilibiliMedia(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        SiteMediaResult pageMedia = mediaFromMediaResolver("bilibili", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        BilibiliVideoInfo info = bilibiliVideoInfoFromUrl(pageUrl, pageText);
+        if (info != null) {
+            try {
+                BilibiliVideoInfo apiInfo = fetchBilibiliVideoInfo(info, pageUrl);
+                if (apiInfo != null) {
+                    info = apiInfo;
+                }
+            } catch (IOException ignored) {
+                // Page-embedded candidates still remain available.
+            }
+            if (!info.cid.isEmpty()) {
+                for (int qn : new int[]{80, 64, 32, 16}) {
+                    String playUrl = "https://api.bilibili.com/x/player/playurl?"
+                            + (info.bvid.isEmpty() ? "avid=" + urlEncode(info.aid) : "bvid=" + urlEncode(info.bvid))
+                            + "&cid=" + urlEncode(info.cid)
+                            + "&qn=" + qn
+                            + "&type=&otype=json&fnval=0&fourk=1";
+                    try {
+                        candidates.addAll(extractBilibiliPlayurlCandidates(readText(playUrl, "https://www.bilibili.com/"), playUrl));
+                    } catch (IOException ignored) {
+                        // Try the next quality level.
+                    }
+                }
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("bilibili", candidates.get(0), candidates, "https://www.bilibili.com/");
+    }
+
+    private BilibiliVideoInfo fetchBilibiliVideoInfo(BilibiliVideoInfo seed, String pageUrl) throws IOException {
+        String viewUrl = "https://api.bilibili.com/x/web-interface/view?"
+                + (seed.bvid.isEmpty() ? "aid=" + urlEncode(seed.aid) : "bvid=" + urlEncode(seed.bvid));
+        JSONObject payload = parseJsonObject(readText(viewUrl, pageUrl));
+        JSONObject data = payload == null ? null : payload.optJSONObject("data");
+        if (data == null) {
+            return null;
+        }
+        String bvid = firstNonEmpty(data.optString("bvid", ""), seed.bvid);
+        String aid = firstNonEmpty(data.optString("aid", ""), seed.aid);
+        String cid = data.optString("cid", "");
+        JSONArray pages = data.optJSONArray("pages");
+        if (cid.isEmpty() && pages != null && pages.length() > 0) {
+            JSONObject firstPage = pages.optJSONObject(0);
+            cid = firstPage == null ? "" : firstPage.optString("cid", "");
+        }
+        if ((bvid.isEmpty() && aid.isEmpty()) || cid.isEmpty()) {
+            return null;
+        }
+        return new BilibiliVideoInfo(bvid, aid, cid);
+    }
+
+    private BilibiliVideoInfo bilibiliVideoInfoFromUrl(String pageUrl, String pageText) {
+        String bvid = "";
+        String aid = "";
+        String text = firstNonEmpty(pageUrl, "") + "\n" + firstNonEmpty(pageText, "");
+        Matcher bvidMatcher = BILIBILI_BVID.matcher(text);
+        if (bvidMatcher.find()) {
+            bvid = bvidMatcher.group(1);
+        }
+        try {
+            URL parsed = new URL(pageUrl);
+            String host = parsed.getHost() == null ? "" : parsed.getHost().toLowerCase(Locale.US);
+            if (!host.contains("bilibili.com") && !host.equals("b23.tv")) {
+                return null;
+            }
+            Matcher aidMatcher = BILIBILI_AID_PATH.matcher(parsed.getPath() == null ? "" : parsed.getPath());
+            if (aidMatcher.find()) {
+                aid = aidMatcher.group(1);
+            }
+        } catch (MalformedURLException ignored) {
+            return null;
+        }
+        if (bvid.isEmpty() && aid.isEmpty()) {
+            return null;
+        }
+        return new BilibiliVideoInfo(bvid, aid, "");
+    }
+
+    private List<String> extractBilibiliPlayurlCandidates(String apiText, String apiUrl) {
+        List<String> candidates = new ArrayList<>();
+        JSONObject payload = parseJsonObject(apiText);
+        JSONObject data = payload == null ? null : payload.optJSONObject("data");
+        JSONArray durl = data == null ? null : data.optJSONArray("durl");
+        if (durl != null) {
+            for (int i = 0; i < durl.length(); i++) {
+                JSONObject entry = durl.optJSONObject(i);
+                if (entry == null) {
+                    continue;
+                }
+                addBilibiliMediaCandidate(candidates, entry.optString("url", ""));
+                JSONArray backups = entry.optJSONArray("backup_url");
+                if (backups != null) {
+                    for (int j = 0; j < backups.length(); j++) {
+                        addBilibiliMediaCandidate(candidates, backups.optString(j, ""));
+                    }
+                }
+            }
+        }
+        candidates.addAll(extractJsonMediaCandidates(apiText, apiUrl));
+        return dedupeMediaCandidates(candidates);
+    }
+
+    private void addBilibiliMediaCandidate(List<String> candidates, String rawUrl) {
+        String candidate = rawUrl == null ? "" : rawUrl.replace("\\u0026", "&").replace("\\/", "/").trim();
+        if (isMediaUrl(candidate)) {
+            addUnique(candidates, candidate);
+        }
+    }
+
+    private SiteMediaResult resolveIqiyiMedia(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        SiteMediaResult pageMedia = mediaFromMediaResolver("iqiyi", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        candidates.addAll(extractJsonMediaCandidates(pageText == null ? "" : pageText, pageUrl));
+
+        String firstReferer = pageUrl;
+        for (String playUrl : extractIqiyiPlayLinks(pageUrl, pageText)) {
+            if (playUrl.equals(pageUrl)) {
+                continue;
+            }
+            try {
+                String playText = readText(playUrl, pageUrl);
+                SiteMediaResult playMedia = mediaFromMediaResolver("iqiyi", playUrl, playText, playUrl);
+                if (playMedia != null) {
+                    candidates.addAll(playMedia.candidates);
+                }
+                candidates.addAll(extractJsonMediaCandidates(playText, playUrl));
+                if (firstReferer.equals(pageUrl)) {
+                    firstReferer = playUrl;
+                }
+            } catch (IOException ignored) {
+                // Keep direct page candidates when iQIYI blocks a play page fetch.
+            }
+            if (!candidates.isEmpty()) {
+                break;
+            }
+        }
+
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("iqiyi", candidates.get(0), candidates, firstReferer);
+    }
+
+    private List<String> extractIqiyiPlayLinks(String pageUrl, String pageText) {
+        List<String> out = new ArrayList<>();
+        Matcher matcher = IQIYI_PLAY_LINK.matcher(pageText == null ? "" : pageText);
+        while (matcher.find()) {
+            String candidate = joinUrl(pageUrl, htmlDecoded(matcher.group(1)).trim());
+            if ("iqiyi".equals(MediaResolver.sourceSite(candidate)) && (pagePathContains(candidate, "/play/") || pagePathContains(candidate, "/album/"))) {
+                addUnique(out, candidate);
+            }
+            if (out.size() >= 4) {
+                break;
+            }
+        }
+        Collections.sort(out, new Comparator<String>() {
+            @Override
+            public int compare(String left, String right) {
+                return Boolean.compare(!pagePathContains(left, "/play/"), !pagePathContains(right, "/play/"));
+            }
+        });
+        return out;
+    }
+
+    private SiteMediaResult resolveYoutubeMedia(String pageUrl, String pageText) {
+        String videoId = youtubeVideoIdFromUrl(pageUrl);
+        if (videoId.isEmpty()) {
+            return mediaFromMediaResolver("youtube", pageUrl, pageText, pageUrl);
+        }
+        List<String> candidates = new ArrayList<>();
+        SiteMediaResult pageMedia = mediaFromMediaResolver("youtube", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        candidates.addAll(extractYoutubePlayerCandidates(pageText, pageUrl));
+        if (candidates.isEmpty()) {
+            try {
+                String watchUrl = "https://www.youtube.com/watch?v=" + urlEncode(videoId);
+                candidates.addAll(extractYoutubePlayerCandidates(readText(watchUrl, "https://www.youtube.com/"), watchUrl));
+            } catch (IOException ignored) {
+                // Fall back to page candidates only.
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("youtube", candidates.get(0), candidates, "https://www.youtube.com/");
+    }
+
+    private String youtubeVideoIdFromUrl(String pageUrl) {
+        try {
+            URL parsed = new URL(pageUrl);
+            String host = parsed.getHost() == null ? "" : parsed.getHost().toLowerCase(Locale.US);
+            String path = parsed.getPath() == null ? "" : parsed.getPath();
+            if (host.equals("youtu.be")) {
+                String id = path.startsWith("/") ? path.substring(1) : path;
+                int slash = id.indexOf('/');
+                return youtubeValidVideoId(slash >= 0 ? id.substring(0, slash) : id);
+            }
+            if (!host.contains("youtube.com")) {
+                return "";
+            }
+            String fromQuery = Uri.parse(pageUrl).getQueryParameter("v");
+            if (fromQuery != null && !fromQuery.trim().isEmpty()) {
+                return youtubeValidVideoId(fromQuery);
+            }
+            if (path.startsWith("/shorts/") || path.startsWith("/embed/")) {
+                String[] parts = path.split("/");
+                if (parts.length >= 3) {
+                    return youtubeValidVideoId(parts[2]);
+                }
+            }
+            return "";
+        } catch (MalformedURLException ignored) {
+            return "";
+        }
+    }
+
+    private String youtubeValidVideoId(String value) {
+        String id = value == null ? "" : value.trim();
+        return id.matches("[A-Za-z0-9_-]{11}") ? id : "";
+    }
+
+    private List<String> extractYoutubePlayerCandidates(String pageText, String pageUrl) {
+        List<String> candidates = new ArrayList<>();
+        JSONObject player = extractYoutubePlayerResponse(pageText);
+        JSONObject streaming = player == null ? null : player.optJSONObject("streamingData");
+        if (streaming == null) {
+            return candidates;
+        }
+        addYoutubeFormatCandidates(candidates, streaming.optJSONArray("formats"));
+        String hlsManifest = streaming.optString("hlsManifestUrl", "").trim();
+        if (isMediaUrl(hlsManifest)) {
+            addUnique(candidates, hlsManifest);
+        }
+        return dedupeMediaCandidates(candidates);
+    }
+
+    private JSONObject extractYoutubePlayerResponse(String pageText) {
+        String text = pageText == null ? "" : pageText;
+        Matcher matcher = YOUTUBE_PLAYER_RESPONSE_START.matcher(text);
+        if (!matcher.find()) {
+            return null;
+        }
+        String blob = balancedObject(text, matcher.end() - 1);
+        if (blob == null) {
+            return null;
+        }
+        return parseJsonObject(blob);
+    }
+
+    private void addYoutubeFormatCandidates(List<String> candidates, JSONArray formats) {
+        if (formats == null) {
+            return;
+        }
+        for (int i = 0; i < formats.length(); i++) {
+            JSONObject format = formats.optJSONObject(i);
+            if (format == null) {
+                continue;
+            }
+            String mimeType = format.optString("mimeType", "").toLowerCase(Locale.US);
+            if (!mimeType.contains("video/")) {
+                continue;
+            }
+            String candidate = format.optString("url", "").trim();
+            if (candidate.isEmpty()) {
+                candidate = youtubeUrlFromSignatureCipher(format.optString("signatureCipher", ""));
+            }
+            if (isMediaUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+    }
+
+    private String youtubeUrlFromSignatureCipher(String cipher) {
+        if (cipher == null || cipher.trim().isEmpty()) {
+            return "";
+        }
+        String signature = queryParameterFromForm(cipher, "s");
+        if (!signature.isEmpty()) {
+            return "";
+        }
+        return queryParameterFromForm(cipher, "url");
+    }
+
+    private String queryParameterFromForm(String query, String name) {
+        try {
+            Uri uri = Uri.parse("https://local.invalid/?" + query);
+            String value = uri.getQueryParameter(name);
+            return value == null ? "" : value.trim();
+        } catch (Exception ignored) {
             return "";
         }
     }
@@ -2720,6 +3730,80 @@ final class DownloadEngine {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private String balancedObject(String text, int start) {
+        if (text == null || start < 0 || start >= text.length() || text.charAt(start) != '{') {
+            return null;
+        }
+        int depth = 0;
+        boolean inString = false;
+        char quote = 0;
+        boolean escape = false;
+        for (int i = start; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (inString) {
+                if (escape) {
+                    escape = false;
+                } else if (ch == '\\') {
+                    escape = true;
+                } else if (ch == quote) {
+                    inString = false;
+                }
+                continue;
+            }
+            if (ch == '"' || ch == '\'') {
+                inString = true;
+                quote = ch;
+                continue;
+            }
+            if (ch == '{') {
+                depth++;
+            } else if (ch == '}') {
+                depth--;
+                if (depth == 0) {
+                    return text.substring(start, i + 1);
+                }
+            }
+        }
+        return null;
+    }
+
+    private String balancedArray(String text, int start) {
+        if (text == null || start < 0 || start >= text.length() || text.charAt(start) != '[') {
+            return null;
+        }
+        int depth = 0;
+        boolean inString = false;
+        char quote = 0;
+        boolean escape = false;
+        for (int i = start; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (inString) {
+                if (escape) {
+                    escape = false;
+                } else if (ch == '\\') {
+                    escape = true;
+                } else if (ch == quote) {
+                    inString = false;
+                }
+                continue;
+            }
+            if (ch == '"' || ch == '\'') {
+                inString = true;
+                quote = ch;
+                continue;
+            }
+            if (ch == '[') {
+                depth++;
+            } else if (ch == ']') {
+                depth--;
+                if (depth == 0) {
+                    return text.substring(start, i + 1);
+                }
+            }
+        }
+        return null;
     }
 
     private List<String> extractJsonMediaCandidates(String value, String baseUrl) {
@@ -4479,6 +5563,11 @@ final class DownloadEngine {
         return first == null || first.trim().isEmpty() ? (second == null ? "" : second.trim()) : first.trim();
     }
 
+    private String firstMatch(String text, Pattern pattern) {
+        Matcher matcher = pattern.matcher(text == null ? "" : text);
+        return matcher.find() ? htmlDecoded(matcher.group(1)).trim() : "";
+    }
+
     private String joinUrl(String baseUrl, String value) {
         if (value == null || value.trim().isEmpty()) {
             return baseUrl;
@@ -4573,17 +5662,24 @@ final class DownloadEngine {
     private boolean isMediaUrl(String rawUrl) {
         String lowered = rawUrl.toLowerCase(Locale.US);
         return lowered.contains(".m3u8") || lowered.contains(".mp4") || lowered.contains(".mpd")
-                || lowered.contains(".webm") || lowered.contains(".m4v") || isYfspHlsManifest(rawUrl);
+                || lowered.contains(".webm") || lowered.contains(".m4v") || isYfspHlsManifest(rawUrl)
+                || isYoutubeHlsManifest(rawUrl);
     }
 
     private boolean isHlsUrl(String rawUrl) {
-        return rawUrl.toLowerCase(Locale.US).contains(".m3u8") || isYfspHlsManifest(rawUrl);
+        return rawUrl.toLowerCase(Locale.US).contains(".m3u8") || isYfspHlsManifest(rawUrl)
+                || isYoutubeHlsManifest(rawUrl);
     }
 
     private boolean isYfspHlsManifest(String rawUrl) {
         String lowered = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
         return lowered.contains("upload.yfsp.tv/api/video/masterplaylist")
                 || lowered.contains("upload.yfsp.tv/api/video/playlist");
+    }
+
+    private boolean isYoutubeHlsManifest(String rawUrl) {
+        String lowered = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        return lowered.contains("googlevideo.com") && lowered.contains("/api/manifest/hls");
     }
 
     private boolean isDashUrl(String rawUrl) {
