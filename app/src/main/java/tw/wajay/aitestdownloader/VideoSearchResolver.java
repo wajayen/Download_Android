@@ -67,6 +67,12 @@ final class VideoSearchResolver {
     private static final Pattern MOVIEFFM_RESULT_TITLE = Pattern.compile(
             "<div\\b[^>]*class=[\"'][^\"']*title[^\"']*[\"'][^>]*>\\s*<a[^>]+href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern MOVIEFFM_EP_SLUG = Pattern.compile(
+            "\\bep_slug=[\"']([^\"']*)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern MOVIEFFM_MEDIA_HINT = Pattern.compile(
+            "(?:https?:\\\\?/\\\\?/|\\\\?/\\\\?/)[^\"'<>\\s\\\\]+(?:\\.m3u8|\\.mp4|\\.mpd)|\\b(?:player_aaaa|videourl|postid)\\b|wp-json/dooplayer",
+            Pattern.CASE_INSENSITIVE);
     private VideoSearchResolver() {
     }
 
@@ -164,13 +170,17 @@ final class VideoSearchResolver {
     }
 
     static List<Result> search(String query) throws IOException {
-        String cleanQuery = query == null ? "" : query.trim();
+        String cleanQuery = filenameStem(query == null ? "" : query.trim());
         if (cleanQuery.isEmpty()) {
             return new ArrayList<>();
         }
         Set<String> seen = new LinkedHashSet<>();
         List<Result> results = new ArrayList<>();
         addDirectSiteSearchResults(cleanQuery, seen, results);
+        if (!results.isEmpty()) {
+            rankSearchResults(results, cleanQuery);
+            return results;
+        }
         for (String searchQuery : searchQueries(cleanQuery)) {
             try {
                 collectDuckDuckGoResults(searchQuery, seen, results);
@@ -202,6 +212,9 @@ final class VideoSearchResolver {
             if (fetchedTemplates < SITE_SEARCH_FETCH_LIMIT) {
                 collectSiteSearchResults(value, template[0], query, seen, out);
                 fetchedTemplates++;
+                if (out.size() >= SITE_SEARCH_LINK_LIMIT) {
+                    return;
+                }
             }
         }
     }
@@ -342,7 +355,7 @@ final class VideoSearchResolver {
             Set<String> seen,
             List<Result> out) {
         try {
-            String html = fetch(searchUrl, 7000, 9000);
+            String html = fetch(searchUrl, 5000, 6000);
             List<RankedResult> ranked = extractSearchPageLinks(html, searchUrl, sourceLabel, query);
             for (RankedResult result : ranked) {
                 if (out.size() >= MAX_RESULTS) {
@@ -609,11 +622,15 @@ final class VideoSearchResolver {
                 || "embedded link".equalsIgnoreCase(titleWithoutSite)
                 || looksLikeCodeOnlyTitle(titleWithoutSite);
         boolean needsThumbnail = result.thumbnailUrl == null || result.thumbnailUrl.trim().isEmpty();
-        if (!needsTitle && !needsThumbnail) {
+        boolean needsMovieFfmValidation = isMovieFfmResultUrl(result.url);
+        if (!needsTitle && !needsThumbnail && !needsMovieFfmValidation) {
             return result;
         }
         try {
             String html = fetch(result.url, 5000, 7000);
+            if (needsMovieFfmValidation && !movieFfmPageLooksDownloadable(html)) {
+                return new RankedResult(result.url, "", -1000, result.thumbnailUrl, result.thumbnailRefererUrl);
+            }
             String pageTitle = extractPageTitle(html);
             String pageThumb = extractThumbnailUrl(html, result.url);
             String sourcePrefix = "";
@@ -629,6 +646,20 @@ final class VideoSearchResolver {
         } catch (IOException ignored) {
             return result;
         }
+    }
+
+    private static boolean isMovieFfmResultUrl(String rawUrl) {
+        String url = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        return url.contains("movieffm.me") || url.contains("movieffm.net");
+    }
+
+    private static boolean movieFfmPageLooksDownloadable(String html) {
+        String text = html == null ? "" : html;
+        Matcher slugMatcher = MOVIEFFM_EP_SLUG.matcher(text);
+        while (slugMatcher.find()) {
+            return true;
+        }
+        return MOVIEFFM_MEDIA_HINT.matcher(text.replace("\\/", "/")).find();
     }
 
     private static String htmlWindow(String html, int start, int end) {

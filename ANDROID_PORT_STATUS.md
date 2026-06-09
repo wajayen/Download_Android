@@ -15,6 +15,9 @@ This Android app is a native port track for the desktop downloader in `downloade
 - System download notifications now include the active filename as notification content and keep the native progress bar synchronized with HTTP byte progress and HLS/DASH segment progress.
 - Search-result downloads now keep the selected result as the first candidate inside a search task instead of queueing only that single page URL, so failed selected sources can automatically fall through to other search candidates before the task is marked failed.
 - Failed queue rows now include a compact error reason, making search/resolve/download failures visible from the Android UI without exporting logs first.
+- Search now normalizes filename-like input such as `title.mp4` to the searchable stem and returns as soon as direct site-search results are available, avoiding long waits on slow fallback sites before the result picker appears.
+- MovieFFM result downloads now support the current `movieffm.me` `/ffm/{id}/{ep_slug}` AJAX playback API, collecting `video_plays[].play_data` HLS candidates with browser-style XHR headers so selected search results can progress past page resolution into real downloads.
+- MovieFFM search-result enrichment now rejects concrete-looking result pages that do not expose episode/source tabs, player metadata, or direct media hints, keeping dead result pages out of the picker before users start a download.
 - Overflow settings now hides the system-default and four-language selector entries and instead exposes a download-directory picker backed by Android's system folder selection.
 - Completed outputs now export to the user-selected download directory when one is configured, falling back to public Downloads/AI Test Downloader otherwise.
 - Completed-output export now falls back to public Downloads/AI Test Downloader if the selected download directory becomes unavailable or its persisted Android permission is revoked.

@@ -144,6 +144,14 @@ final class DownloadEngine {
     private static final Pattern DRAMASQ_PLAY_LINK = Pattern.compile(
             "href=[\"']([^\"']*/vodplay/\\d+/ep\\d+\\.html)[\"']",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern MOVIEFFM_PATH_ID = Pattern.compile("/(?:movie|tv|drama|anime)/(\\d+)/?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern MOVIEFFM_FFM_ID = Pattern.compile("/ffm/([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern MOVIEFFM_JS_ID = Pattern.compile(
+            "replace\\(['\"]\\{0\\}['\"]\\s*,\\s*['\"]([^'\"]+)['\"]\\)",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern MOVIEFFM_EP_SLUG = Pattern.compile(
+            "\\bep_slug=[\"']([^\"']*)[\"']",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern THREEKOR_LIST_PATH = Pattern.compile("/list/\\d+[^/]*\\.html$", Pattern.CASE_INSENSITIVE);
     private static final Pattern THREEKOR_DETAIL_PATH = Pattern.compile("/detail/\\d+\\.html$", Pattern.CASE_INSENSITIVE);
     private static final Pattern THREEKOR_DETAIL_LINK = Pattern.compile(
@@ -1107,6 +1115,9 @@ final class DownloadEngine {
         }
         if ("olevod".equals(site)) {
             return resolveOlevodMedia(pageUrl, pageText);
+        }
+        if ("movieffm".equals(site)) {
+            return resolveMovieFfmMedia(pageUrl, pageText);
         }
         if ("dramasq".equals(site)) {
             return resolveDramaSqMedia(pageUrl, pageText);
@@ -2894,6 +2905,107 @@ final class DownloadEngine {
             }
         }
         return candidates;
+    }
+
+    private SiteMediaResult resolveMovieFfmMedia(String pageUrl, String pageText) throws IOException {
+        List<String> candidates = new ArrayList<>();
+        String origin = firstNonEmpty(originFromUrl(pageUrl), "https://www.movieffm.me");
+        String contentId = movieFfmContentId(pageUrl, pageText);
+        if (!contentId.isEmpty()) {
+            for (String slug : movieFfmEpisodeSlugs(pageText)) {
+                if (cancelled.get()) {
+                    return null;
+                }
+                String apiUrl = origin + "/ffm/" + urlEncode(contentId);
+                if (!slug.isEmpty()) {
+                    apiUrl += "/" + urlEncode(slug);
+                }
+                try {
+                    candidates.addAll(extractMovieFfmApiCandidates(readText(apiUrl, pageUrl, movieFfmAjaxHeaders(pageUrl)), apiUrl));
+                } catch (IOException ignored) {
+                    // Try the next MovieFFM source tab or fallback parser.
+                }
+            }
+        }
+        SiteMediaResult pageMedia = mediaFromMediaResolver("movieffm", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("movieffm", candidates.get(0), candidates, pageUrl);
+    }
+
+    private String movieFfmContentId(String pageUrl, String pageText) {
+        String path = "";
+        try {
+            path = new URL(pageUrl).getPath();
+        } catch (MalformedURLException ignored) {
+            // Continue with page-script fallbacks.
+        }
+        Matcher ffmMatcher = MOVIEFFM_FFM_ID.matcher(path == null ? "" : path);
+        if (ffmMatcher.find()) {
+            return htmlDecoded(ffmMatcher.group(1)).trim();
+        }
+        Matcher pathMatcher = MOVIEFFM_PATH_ID.matcher(path == null ? "" : path);
+        String pathId = pathMatcher.find() ? htmlDecoded(pathMatcher.group(1)).trim() : "";
+        Matcher jsMatcher = MOVIEFFM_JS_ID.matcher(pageText == null ? "" : pageText);
+        String jsId = jsMatcher.find() ? htmlDecoded(jsMatcher.group(1)).trim() : "";
+        return firstNonEmpty(jsId, pathId);
+    }
+
+    private List<String> movieFfmEpisodeSlugs(String pageText) {
+        List<String> slugs = new ArrayList<>();
+        Matcher matcher = MOVIEFFM_EP_SLUG.matcher(pageText == null ? "" : pageText);
+        while (matcher.find()) {
+            addUnique(slugs, htmlDecoded(matcher.group(1)).trim());
+        }
+        if (slugs.isEmpty()) {
+            slugs.add("");
+        }
+        return slugs;
+    }
+
+    private Map<String, String> movieFfmAjaxHeaders(String pageUrl) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Accept", "application/json, text/javascript, */*; q=0.01");
+        headers.put("X-Requested-With", "XMLHttpRequest");
+        headers.put("Sec-Fetch-Site", "same-origin");
+        headers.put("Sec-Fetch-Mode", "cors");
+        headers.put("Sec-Fetch-Dest", "empty");
+        String origin = originFromUrl(pageUrl);
+        if (!origin.isEmpty()) {
+            headers.put("Origin", origin);
+        }
+        return headers;
+    }
+
+    private List<String> extractMovieFfmApiCandidates(String apiText, String apiUrl) {
+        List<String> candidates = new ArrayList<>();
+        try {
+            JSONObject payload = parseJsonObject(apiText);
+            JSONArray plays = payload == null ? null : payload.optJSONArray("video_plays");
+            if (plays != null) {
+                for (int i = 0; i < plays.length(); i++) {
+                    JSONObject row = plays.optJSONObject(i);
+                    if (row == null) {
+                        continue;
+                    }
+                    for (String key : new String[]{"play_data", "v_data", "url", "play_url", "src"}) {
+                        String candidate = joinUrl(apiUrl, row.optString(key, ""));
+                        if (isMediaUrl(candidate)) {
+                            addUnique(candidates, candidate);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Regex fallback below handles partial JSON and HTML-wrapped payloads.
+        }
+        candidates.addAll(extractMediaCandidates(apiText == null ? "" : apiText, apiUrl));
+        return prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
     }
 
     private SiteMediaResult resolveDramaSqMedia(String pageUrl, String pageText) throws IOException {
