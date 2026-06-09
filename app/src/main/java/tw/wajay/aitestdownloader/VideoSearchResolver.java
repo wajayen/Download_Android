@@ -304,9 +304,9 @@ final class VideoSearchResolver {
 
     private static void collectDuckDuckGoResults(String query, Set<String> seen, List<Result> out) throws IOException {
         String html = fetch("https://duckduckgo.com/html/?q=" + URLEncoder.encode(query, "UTF-8"));
-        collectMatches(DDG_RESULT.matcher(html), seen, out);
+        collectMatches(DDG_RESULT.matcher(html), query, seen, out);
         if (out.size() < MAX_RESULTS) {
-            collectMatches(LINK.matcher(html), seen, out);
+            collectMatches(LINK.matcher(html), query, seen, out);
         }
     }
 
@@ -332,12 +332,23 @@ final class VideoSearchResolver {
     }
 
     private static List<RankedResult> extractSearchPageLinks(String html, String baseUrl, String sourceLabel, String query) {
+        return extractSearchPageLinks(html, baseUrl, sourceLabel, query, 0);
+    }
+
+    private static List<RankedResult> extractSearchPageLinks(String html, String baseUrl, String sourceLabel, String query, int depth) {
         List<RankedResult> ranked = new ArrayList<>();
         Set<String> localSeen = new LinkedHashSet<>();
         Matcher matcher = LINK.matcher(html == null ? "" : html);
         while (matcher.find() && ranked.size() < SITE_SEARCH_LINK_LIMIT * 3) {
             String url = normalizeResultUrl(matcher.group(1), baseUrl);
-            if (url.isEmpty() || !localSeen.add(url) || !looksLikeSearchResultPath(url)) {
+            if (url.isEmpty() || !localSeen.add(url)) {
+                continue;
+            }
+            if (isNonVideoListingUrl(url)) {
+                appendNestedListingResults(ranked, localSeen, url, sourceLabel, query, depth);
+                continue;
+            }
+            if (!looksLikeSearchResultPath(url)) {
                 continue;
             }
             String nearbyHtml = htmlWindow(html, matcher.start(), matcher.end());
@@ -353,7 +364,14 @@ final class VideoSearchResolver {
         Matcher dataMatcher = DATA_LINK.matcher(html == null ? "" : html);
         while (dataMatcher.find() && ranked.size() < SITE_SEARCH_LINK_LIMIT * 4) {
             String url = normalizeResultUrl(dataMatcher.group(1), baseUrl);
-            if (url.isEmpty() || !localSeen.add(url) || !looksLikeSearchResultPath(url)) {
+            if (url.isEmpty() || !localSeen.add(url)) {
+                continue;
+            }
+            if (isNonVideoListingUrl(url)) {
+                appendNestedListingResults(ranked, localSeen, url, sourceLabel, query, depth);
+                continue;
+            }
+            if (!looksLikeSearchResultPath(url)) {
                 continue;
             }
             int score = resultMatchScore("", url, query);
@@ -378,10 +396,61 @@ final class VideoSearchResolver {
         return ranked;
     }
 
-    private static void collectMatches(Matcher matcher, Set<String> seen, List<Result> out) {
+    private static void appendNestedListingResults(
+            List<RankedResult> ranked,
+            Set<String> seen,
+            String listingUrl,
+            String sourceLabel,
+            String query,
+            int depth) {
+        if (depth >= 1 || ranked.size() >= SITE_SEARCH_LINK_LIMIT) {
+            return;
+        }
+        try {
+            String html = fetch(listingUrl, 5000, 7000);
+            List<RankedResult> nested = extractSearchPageLinks(html, listingUrl, sourceLabel, query, depth + 1);
+            for (RankedResult result : nested) {
+                if (ranked.size() >= SITE_SEARCH_LINK_LIMIT * 4) {
+                    return;
+                }
+                if (result.url == null || result.url.isEmpty() || !seen.add(result.url)) {
+                    continue;
+                }
+                ranked.add(result);
+            }
+        } catch (IOException ignored) {
+            // Listing pages often block direct fetches; keep the visible picker to concrete pages only.
+        }
+    }
+
+    private static void collectMatches(Matcher matcher, String query, Set<String> seen, List<Result> out) {
         while (matcher.find() && out.size() < MAX_RESULTS) {
             String url = normalizeResultUrl(matcher.group(1));
+            if (isNonVideoListingUrl(url)) {
+                addNestedListingResults(url, query, seen, out);
+                continue;
+            }
             addResult(url, cleanTitle(matcher.group(2)), "", seen, out);
+        }
+    }
+
+    private static void addNestedListingResults(String listingUrl, String query, Set<String> seen, List<Result> out) {
+        if (listingUrl == null || listingUrl.isEmpty() || out.size() >= MAX_RESULTS) {
+            return;
+        }
+        try {
+            String html = fetch(listingUrl, 5000, 7000);
+            String site = MediaResolver.sourceSite(listingUrl);
+            List<RankedResult> nested = extractSearchPageLinks(html, listingUrl, site == null ? "" : site, query, 1);
+            for (RankedResult result : nested) {
+                if (out.size() >= MAX_RESULTS) {
+                    return;
+                }
+                RankedResult enriched = enrichSearchResult(result, listingUrl);
+                addResult(enriched.url, enriched.title, listingUrl, seen, out, enriched.thumbnailUrl, enriched.thumbnailRefererUrl);
+            }
+        } catch (IOException ignored) {
+            // External search engines often return category pages; blocked listings are simply not visible choices.
         }
     }
 
@@ -394,7 +463,7 @@ final class VideoSearchResolver {
     }
 
     private static void addResult(String url, String title, String refererUrl, Set<String> seen, List<Result> out, String thumbnailUrl, String thumbnailRefererUrl) {
-        if (url == null || url.isEmpty() || !isSupportedCandidate(url) || !seen.add(url)) {
+        if (url == null || url.isEmpty() || isNonVideoListingUrl(url) || !isSupportedCandidate(url) || !seen.add(url)) {
             return;
         }
         out.add(new Result(url, cleanTitle(title), MediaResolver.sourceSite(url), refererUrl, thumbnailUrl, thumbnailRefererUrl));
@@ -762,6 +831,9 @@ final class VideoSearchResolver {
 
     private static boolean looksLikeSearchResultPath(String rawUrl) {
         String url = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        if (isNonVideoListingUrl(url)) {
+            return false;
+        }
         if (hasSupportedMediaExtension(url)) {
             return true;
         }
@@ -775,6 +847,45 @@ final class VideoSearchResolver {
         };
         for (String marker : markers) {
             if (url.contains(marker)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isNonVideoListingUrl(String rawUrl) {
+        String value = rawUrl == null ? "" : rawUrl.trim();
+        if (value.isEmpty()) {
+            return true;
+        }
+        Uri uri = Uri.parse(value);
+        String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase(Locale.US);
+        String query = uri.getQuery() == null ? "" : uri.getQuery().toLowerCase(Locale.US);
+        if (path.isEmpty() || "/".equals(path)) {
+            return true;
+        }
+        String[] listingMarkers = new String[]{
+                "/category/", "/categories/", "/cat/", "/tag/", "/tags/",
+                "/genre/", "/genres/", "/type/", "/types/", "/label/",
+                "/author/", "/page/", "/feed/", "/rss/", "/wp-",
+                "/search/", "/search.html", "/vodsearch/", "/vod/search",
+                "/vodtype/", "/vodshow/", "/vodlist/", "/list/", "/lists/",
+                "/index.php/vod/search", "/index.php/vod/type",
+                "/privacy", "/contact", "/about", "/dmca"
+        };
+        for (String marker : listingMarkers) {
+            if (path.contains(marker)) {
+                return true;
+            }
+        }
+        if (path.endsWith("/search") || path.endsWith("/category") || path.endsWith("/tag")) {
+            return true;
+        }
+        String[] searchParams = new String[]{
+                "wd=", "keyword=", "search_query=", "query=", "q=", "s="
+        };
+        for (String marker : searchParams) {
+            if (query.startsWith(marker) || query.contains("&" + marker)) {
                 return true;
             }
         }
