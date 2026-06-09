@@ -18,6 +18,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.DocumentsContract;
 import android.text.InputType;
 import android.view.Gravity;
@@ -30,6 +32,7 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -61,10 +64,17 @@ public final class MainActivity extends Activity {
     private static final int INDIGO = Color.rgb(62, 78, 113);
     private static final Pattern HTTP_URL = Pattern.compile("https?://[^\\s\"'<>]+", Pattern.CASE_INSENSITIVE);
     private static final Pattern HEADER_LINE = Pattern.compile("^\\s*([A-Za-z][A-Za-z0-9-]*)\\s*:\\s*(.+?)\\s*$", Pattern.CASE_INSENSITIVE);
-    private static final Pattern CURL_HEADER = Pattern.compile("-H\\s+['\"]([A-Za-z][A-Za-z0-9-]*)\\s*:\\s*([^'\"]+)['\"]", Pattern.CASE_INSENSITIVE);
-    private static final Pattern CURL_URL = Pattern.compile("(?:^|\\s)(?:curl|--url)\\s+(?:--location\\s+|--request\\s+\\S+\\s+|--compressed\\s+)*['\"]?(https?://[^\\s'\"<>]+)['\"]?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CURL_HEADER = Pattern.compile("(?:^|\\s)(?:-H|--header)(?:\\s+|=)['\"]([A-Za-z][A-Za-z0-9-]*)\\s*:\\s*([^'\"]+)['\"]", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CURL_COOKIE = Pattern.compile("(?:^|\\s)(?:-b|--cookie)(?:\\s+|=)(?:'([^']*)'|\"([^\"]*)\"|(\\S+))", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CURL_REFERER = Pattern.compile("(?:^|\\s)(?:-e|--referer)(?:\\s+|=)(?:'([^']*)'|\"([^\"]*)\"|(\\S+))", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CURL_USER_AGENT = Pattern.compile("(?:^|\\s)(?:-A|--user-agent)(?:\\s+|=)(?:'([^']*)'|\"([^\"]*)\"|(\\S+))", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CURL_URL = Pattern.compile("(?:^|\\s)(?:curl|--url)(?:\\s+|=)(?:--location\\s+|--request\\s+\\S+\\s+|--compressed\\s+)*['\"]?(https?://[^\\s'\"<>]+)['\"]?", Pattern.CASE_INSENSITIVE);
     private EditText urlInput;
     private EditText fileNameInput;
+    private Button downloadButton;
+    private Button playAfterButton;
+    private LinearLayout searchStatusPanel;
+    private TextView searchStatusText;
     private LinearLayout completedVideoList;
     private LinearLayout sourcePanel;
     private Spinner sourceSpinner;
@@ -80,11 +90,23 @@ public final class MainActivity extends Activity {
     private TextView sourceDetailText;
     private TextView statusText;
     private TaskStore taskStore;
+    private final Handler refreshHandler = new Handler(Looper.getMainLooper());
+    private LinearLayout downloadQueuePanel;
     private List<TaskStore.CandidateOption> sourceOptions = new ArrayList<>();
     private List<CompletedVideo> completedVideos = new ArrayList<>();
     private int selectedCompletedVideoIndex = 0;
     private String selectedSourceUrl = "";
     private boolean sourcePanelVisible = false;
+    private boolean downloadQueueVisible = false;
+    private boolean searchInProgress = false;
+    private int searchGeneration = 0;
+    private final Runnable statusRefreshRunnable = new Runnable() {
+        @Override
+        public void run() {
+            refreshStatus();
+            refreshHandler.postDelayed(this, 1000L);
+        }
+    };
 
     private static final class BrowserRequestContext {
         final List<String> urls;
@@ -147,6 +169,14 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refreshStatus();
+        refreshHandler.removeCallbacks(statusRefreshRunnable);
+        refreshHandler.postDelayed(statusRefreshRunnable, 1000L);
+    }
+
+    @Override
+    protected void onPause() {
+        refreshHandler.removeCallbacks(statusRefreshRunnable);
+        super.onPause();
     }
 
     @Override
@@ -211,11 +241,32 @@ public final class MainActivity extends Activity {
         styleInput(fileNameInput);
         inputPanel.addView(fileNameInput, matchWrap());
 
-        Button downloadButton = new Button(this);
+        downloadButton = new Button(this);
         downloadButton.setText(getString(R.string.action_download));
         stylePrimaryButton(downloadButton);
         downloadButton.setOnClickListener(view -> startDownload());
         inputPanel.addView(downloadButton, matchWrap());
+
+        searchStatusPanel = new LinearLayout(this);
+        searchStatusPanel.setOrientation(LinearLayout.HORIZONTAL);
+        searchStatusPanel.setGravity(Gravity.CENTER_VERTICAL);
+        searchStatusPanel.setPadding(dp(10), dp(8), dp(10), dp(8));
+        searchStatusPanel.setBackground(roundedBackground(SURFACE_TINT, BORDER, 1, 8));
+        searchStatusPanel.setVisibility(View.GONE);
+        ProgressBar searchProgress = new ProgressBar(this);
+        searchProgress.setIndeterminate(true);
+        searchStatusPanel.addView(searchProgress, new LinearLayout.LayoutParams(dp(32), dp(32)));
+        searchStatusText = new TextView(this);
+        searchStatusText.setText(getString(R.string.status_searching_results));
+        searchStatusText.setTextColor(TEXT_PRIMARY);
+        searchStatusText.setTextSize(15);
+        searchStatusText.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        searchStatusText.setPadding(dp(10), 0, 0, 0);
+        searchStatusPanel.addView(searchStatusText, new LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1.0f));
+        inputPanel.addView(searchStatusPanel, matchWrap());
 
         completedVideoList = new LinearLayout(this);
         completedVideoList.setOrientation(LinearLayout.VERTICAL);
@@ -227,7 +278,7 @@ public final class MainActivity extends Activity {
         playSelectedButton.setOnClickListener(view -> playSelectedCompletedVideo());
         inputPanel.addView(playSelectedButton, matchWrap());
 
-        Button playAfterButton = new Button(this);
+        playAfterButton = new Button(this);
         playAfterButton.setText(getString(R.string.action_play_after_50mb));
         styleSecondaryButton(playAfterButton);
         playAfterButton.setOnClickListener(view -> startDownload(true));
@@ -236,8 +287,12 @@ public final class MainActivity extends Activity {
         Button queueButton = new Button(this);
         queueButton.setText(getString(R.string.section_download_queue));
         styleSecondaryButton(queueButton);
-        queueButton.setOnClickListener(view -> showDownloadQueueDialog());
+        queueButton.setOnClickListener(view -> toggleDownloadQueuePanel());
         root.addView(queueButton, matchWrap());
+
+        downloadQueuePanel = contentPanel();
+        downloadQueuePanel.setVisibility(View.GONE);
+        root.addView(downloadQueuePanel, matchWrap());
 
         statusText = new TextView(this);
         statusText.setText(getString(R.string.status_idle));
@@ -246,7 +301,9 @@ public final class MainActivity extends Activity {
         statusText.setMinLines(6);
         statusText.setGravity(Gravity.TOP | Gravity.START);
         statusText.setLineSpacing(dp(2), 1.0f);
-        statusText.setPadding(dp(2), 0, dp(2), dp(10));
+        statusText.setPadding(dp(10), dp(8), dp(10), dp(8));
+        statusText.setBackground(roundedBackground(SURFACE_TINT, BORDER, 1, 8));
+        downloadQueuePanel.addView(statusText, matchWrap());
 
         sourcePanel = contentPanel();
         sourcePanel.setVisibility(View.GONE);
@@ -475,16 +532,15 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
-    private void showDownloadQueueDialog() {
-        CharSequence message = statusText == null ? "" : statusText.getText();
-        if (message == null || message.toString().trim().isEmpty()) {
-            message = getString(R.string.status_idle);
+    private void toggleDownloadQueuePanel() {
+        downloadQueueVisible = !downloadQueueVisible;
+        if (downloadQueuePanel != null) {
+            downloadQueuePanel.setVisibility(downloadQueueVisible ? View.VISIBLE : View.GONE);
         }
-        new AlertDialog.Builder(this)
-                .setTitle(getString(R.string.section_download_queue))
-                .setMessage(message)
-                .setPositiveButton(android.R.string.ok, null)
-                .show();
+        if (downloadQueueVisible && statusText != null) {
+            statusText.setText(downloadQueueMessage());
+        }
+        refreshStatus();
     }
 
     private void openDownloadDirectoryPicker() {
@@ -505,6 +561,9 @@ public final class MainActivity extends Activity {
     }
 
     private void startDownload(boolean playAfterThreshold) {
+        if (searchInProgress) {
+            return;
+        }
         BrowserRequestContext requestContext = parseBrowserRequestContext(urlInput.getText().toString());
         List<String> urls = requestContext.urls;
         if (urls.isEmpty()) {
@@ -541,22 +600,71 @@ public final class MainActivity extends Activity {
         } else {
             fileNameInput.setText("");
         }
-        statusText.setText(queuedPreview.toString());
+        if (downloadQueueVisible) {
+            statusText.setText(queuedPreview.toString());
+        }
+        refreshStatus();
     }
 
     private void showSearchResults(String query, String fileName, boolean playAfterThreshold) {
-        statusText.setText(getString(R.string.status_searching_results));
+        final int generation = beginSearch();
+        if (downloadQueueVisible) {
+            statusText.setText(getString(R.string.status_searching_results));
+        }
         new Thread(() -> {
             try {
                 List<VideoSearchResolver.Result> results = VideoSearchResolver.search(query);
-                runOnUiThread(() -> showSearchResultDialog(query, fileName, playAfterThreshold, results));
+                runOnUiThread(() -> {
+                    if (generation != searchGeneration) {
+                        return;
+                    }
+                    finishSearch();
+                    showSearchResultDialog(query, fileName, playAfterThreshold, results);
+                });
             } catch (Exception error) {
                 runOnUiThread(() -> {
+                    if (generation != searchGeneration) {
+                        return;
+                    }
+                    finishSearch();
                     Toast.makeText(this, getString(R.string.toast_search_failed), Toast.LENGTH_SHORT).show();
-                    statusText.setText(getString(R.string.status_idle));
+                    if (downloadQueueVisible) {
+                        statusText.setText(getString(R.string.status_idle));
+                    }
                 });
             }
         }, "video-search-ui").start();
+    }
+
+    private int beginSearch() {
+        searchGeneration++;
+        searchInProgress = true;
+        if (downloadButton != null) {
+            downloadButton.setEnabled(false);
+        }
+        if (playAfterButton != null) {
+            playAfterButton.setEnabled(false);
+        }
+        if (searchStatusText != null) {
+            searchStatusText.setText(getString(R.string.status_searching_results));
+        }
+        if (searchStatusPanel != null) {
+            searchStatusPanel.setVisibility(View.VISIBLE);
+        }
+        return searchGeneration;
+    }
+
+    private void finishSearch() {
+        searchInProgress = false;
+        if (downloadButton != null) {
+            downloadButton.setEnabled(true);
+        }
+        if (playAfterButton != null) {
+            playAfterButton.setEnabled(true);
+        }
+        if (searchStatusPanel != null) {
+            searchStatusPanel.setVisibility(View.GONE);
+        }
     }
 
     private void showSearchResultDialog(
@@ -566,7 +674,9 @@ public final class MainActivity extends Activity {
             List<VideoSearchResolver.Result> results) {
         if (results == null || results.isEmpty()) {
             Toast.makeText(this, getString(R.string.toast_no_search_results), Toast.LENGTH_SHORT).show();
-            statusText.setText(getString(R.string.status_idle));
+            if (downloadQueueVisible) {
+                statusText.setText(getString(R.string.status_idle));
+            }
             return;
         }
         LinearLayout list = new LinearLayout(this);
@@ -585,7 +695,7 @@ public final class MainActivity extends Activity {
                 .create();
         holder[0] = dialog;
         dialog.setOnDismissListener(ignored -> {
-            if (statusText != null && getString(R.string.status_searching_results).contentEquals(statusText.getText())) {
+            if (downloadQueueVisible && statusText != null && getString(R.string.status_searching_results).contentEquals(statusText.getText())) {
                 statusText.setText(taskStore.summary());
             }
         });
@@ -656,7 +766,10 @@ public final class MainActivity extends Activity {
         }
         startDownloaderService(DownloadService.startIntent(this, result.url, fileName, result.refererUrl, "", "{}", playAfterThreshold));
         fileNameInput.setText(fileName);
-        statusText.setText(queueLine(fileName, 0L, -1L));
+        if (downloadQueueVisible) {
+            statusText.setText(queueLine(fileName, 0L, -1L));
+        }
+        refreshStatus();
     }
 
     private String displaySearchTitle(VideoSearchResolver.Result result) {
@@ -763,7 +876,7 @@ public final class MainActivity extends Activity {
     }
 
     private BrowserRequestContext parseBrowserRequestContext(String text) {
-        String raw = text == null ? "" : text;
+        String raw = normalizePastedCurlText(text);
         String referer = "";
         String cookieHeader = "";
         JSONObject headers = new JSONObject();
@@ -797,14 +910,43 @@ public final class MainActivity extends Activity {
                 putHeader(headers, name, value);
             }
         }
+        Matcher curlCookie = CURL_COOKIE.matcher(raw);
+        while (curlCookie.find()) {
+            String value = firstMatchedGroup(curlCookie, 1, 2, 3);
+            if (!value.trim().isEmpty()) {
+                cookieHeader = value.trim();
+            }
+        }
+        Matcher curlReferer = CURL_REFERER.matcher(raw);
+        while (curlReferer.find()) {
+            String value = firstMatchedGroup(curlReferer, 1, 2, 3);
+            if (!value.trim().isEmpty()) {
+                referer = value.trim();
+            }
+        }
+        Matcher curlUserAgent = CURL_USER_AGENT.matcher(raw);
+        while (curlUserAgent.find()) {
+            String value = firstMatchedGroup(curlUserAgent, 1, 2, 3);
+            if (!value.trim().isEmpty()) {
+                putHeader(headers, "User-Agent", value.trim());
+            }
+        }
         List<String> urls = extractCurlTargetUrls(raw);
         if (urls.isEmpty()) {
-            urls = extractUrls(removeCurlHeaderArguments(urlText.toString()));
+            urls = extractUrls(removeCurlRequestArguments(urlText.toString()));
         }
         if (urls.isEmpty()) {
-            urls = extractUrls(removeCurlHeaderArguments(raw));
+            urls = extractUrls(removeCurlRequestArguments(raw));
         }
         return new BrowserRequestContext(urls, firstUrl(referer), cookieHeader, headers.toString());
+    }
+
+    private String normalizePastedCurlText(String text) {
+        String value = text == null ? "" : text;
+        value = value.replaceAll("\\\\\\s*\\r?\\n", " ");
+        value = value.replaceAll("\\^\\s*\\r?\\n", " ");
+        value = value.replaceAll("`\\s*\\r?\\n", " ");
+        return value;
     }
 
     private List<String> extractCurlTargetUrls(String text) {
@@ -819,11 +961,25 @@ public final class MainActivity extends Activity {
         return urls;
     }
 
-    private String removeCurlHeaderArguments(String text) {
+    private String removeCurlRequestArguments(String text) {
         if (text == null || text.isEmpty()) {
             return "";
         }
-        return CURL_HEADER.matcher(text).replaceAll(" ");
+        String cleaned = CURL_HEADER.matcher(text).replaceAll(" ");
+        cleaned = CURL_COOKIE.matcher(cleaned).replaceAll(" ");
+        cleaned = CURL_REFERER.matcher(cleaned).replaceAll(" ");
+        cleaned = CURL_USER_AGENT.matcher(cleaned).replaceAll(" ");
+        return cleaned;
+    }
+
+    private String firstMatchedGroup(Matcher matcher, int... groups) {
+        for (int group : groups) {
+            String value = matcher.group(group);
+            if (value != null) {
+                return value;
+            }
+        }
+        return "";
     }
 
     private boolean isAllowedRequestHeader(String name) {
@@ -909,7 +1065,14 @@ public final class MainActivity extends Activity {
 
     private String trimTrailingPunctuation(String rawUrl) {
         String value = rawUrl == null ? "" : rawUrl.trim();
-        while (value.endsWith(".") || value.endsWith(",") || value.endsWith(";") || value.endsWith(")") || value.endsWith("]")) {
+        while (value.endsWith(".")
+                || value.endsWith(",")
+                || value.endsWith(";")
+                || value.endsWith(")")
+                || value.endsWith("]")
+                || value.endsWith("\\")
+                || value.endsWith("^")
+                || value.endsWith("`")) {
             value = value.substring(0, value.length() - 1);
         }
         return value;
@@ -1304,9 +1467,19 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshStatus() {
-        statusText.setText(taskStore.summary());
+        if (downloadQueueVisible && !searchInProgress) {
+            statusText.setText(downloadQueueMessage());
+        }
         refreshCompletedVideos();
         refreshCandidateOptions();
+    }
+
+    private String downloadQueueMessage() {
+        String message = taskStore == null ? "" : taskStore.summary();
+        if (message == null || message.trim().isEmpty()) {
+            return getString(R.string.status_idle);
+        }
+        return message;
     }
 
     private void refreshCandidateOptions() {

@@ -7,7 +7,9 @@ This Android app is a native port track for the desktop downloader in `downloade
 - APK build pipeline with local JDK, Android SDK, and Gradle.
 - Native Android UI for entering or sharing a URL.
 - Android-friendly main screen with a left hamburger menu, right overflow settings menu, and download queue centered as the primary content.
-- Download queue content is now hidden by default behind a bottom Download Queue button; tapping the button opens a queue dialog with the current file/progress content.
+- Main action button is labeled `搜尋/下載` / localized Search/Download, matching that the same action either searches by title/code or queues direct URLs.
+- Download queue content is now hidden by default behind a bottom Download Queue button; tapping the button expands a fixed queue panel directly below the button with the current file/progress content.
+- Download queue progress now refreshes the fixed queue text only while the queue panel is expanded; collapsed queue content is left untouched until the user opens it again.
 - Overflow settings now hides the system-default and four-language selector entries and instead exposes a download-directory picker backed by Android's system folder selection.
 - Completed outputs now export to the user-selected download directory when one is configured, falling back to public Downloads/AI Test Downloader otherwise.
 - Completed-output export now falls back to public Downloads/AI Test Downloader if the selected download directory becomes unavailable or its persisted Android permission is revoked.
@@ -67,7 +69,11 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Android text response parsing now honors `Content-Type` charset values for pages, HLS/DASH manifests, and Anime1 API responses, falling back to UTF-8.
 - Android HTTP, page, API, HLS, and DASH reads now report clear HTTP status failures and reject byte-range segment responses that are not returned as `206 Partial Content`.
 - Android input supports browser `Copy as cURL` text and avoids queuing URLs found only inside pasted header values such as Referer.
-- Android input now accepts video titles and JAV-style codes as search queries, searches supported video sites in the background, and shows a selectable result list before queueing the chosen URL.
+- Android `Copy as cURL` parsing now accepts browser-style `-b/--cookie` and `-e/--referer` options and removes those arguments before fallback URL scanning, preventing protected-page Referer URLs from being mistaken for download targets.
+- Android `Copy as cURL` parsing now accepts `--header` in addition to `-H`, and maps `-A/--user-agent` into the safe request-header set before queueing downloads.
+- Android `Copy as cURL` parsing now normalizes Unix backslash, Windows CMD caret, and PowerShell backtick line continuations before extracting URLs and headers, and trims leftover continuation markers from URL tails.
+- Android `Copy as cURL` parsing now accepts equals-style options such as `--url=...`, `--cookie=...`, `--referer=...`, `--user-agent=...`, and `--header=...`, matching additional browser/tool exports.
+- Android input now accepts video titles and JAV-style codes as search queries, searches supported video sites in the background, shows an in-screen localized `搜尋中....` progress row while search is running, and shows a selectable result list before queueing the chosen URL.
 - Android search results are presented as thumbnail, title/code, and source-site rows, so users can choose the exact video page before download starts; site-search fallback pages are filtered out of the visible picker, and thumbnails are extracted from nearby cards, meta images, srcset, thumbnail attributes, and loaded with the search-page Referer.
 - Android search result rows now enrich missing or generic card data by opening the concrete video page and reading `og:title`, `<title>`, `h1`, and `og:image` metadata before showing the picker.
 - Android search result rows now preserve a separate thumbnail Referer and enrich direct JAV/code candidates before display, so protected thumbnails can load and code-only rows can be replaced with real video page titles.

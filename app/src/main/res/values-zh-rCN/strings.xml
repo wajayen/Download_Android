@@ -5,12 +5,12 @@
     <string name="search_result_site_unknown">未知站点</string>
     <string name="search_result_no_title">未命名视频</string>
     <string name="search_result_thumbnail_description">缩略图</string>
-    <string name="status_searching_results">正在搜索结果...</string>
+    <string name="status_searching_results">搜索中....</string>
     <string name="app_name">下载者</string>
     <string name="build_ready">粘贴视频地址、浏览器请求头，或受保护页面的 Copy as cURL 文本。</string>
     <string name="hint_url">网址、影片名称、番号，或 Copy as cURL 文本&#10;curl https://example.com/video.mp4 -H Referer:https://example.com/page&#10;Cookie: name=value; token=...</string>
     <string name="hint_file_name">文件名（可选）</string>
-    <string name="action_download">下载</string>
+    <string name="action_download">搜索/下载</string>
     <string name="action_play_after_50mb">下载 50MB 后播放</string>
     <string name="action_open_menu">打开菜单</string>
     <string name="action_open_settings">打开设置</string>

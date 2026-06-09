@@ -2,7 +2,7 @@
 
 `Download_Android` 是 Windows 版「下載者」的 Android 原生移植專案。目標是在手機上提供接近桌面版的影片搜尋、解析、下載、續傳、播放與診斷能力，同時維持 Android 友善的操作方式。
 
-目前 Android 版本：`0.202.0`（`versionCode 202`）。
+目前 Android 版本：`0.210.0`（`versionCode 210`）。
 
 ## App 特色
 
@@ -17,7 +17,7 @@
 
 - v0.136.0: 右上角設定選單新增「關於」，顯示下載者版本與編譯年月日。
 - v0.136.0: GoodAV17/HohoJ/GGJAV 會解碼 `ggjav.com/main/embed?u=...` iframe，加入直接媒體與 video-N.ggjav.com 備援候選。
-- v0.136.0: UI 底部下載隊列改為按鈕，預設不顯示隊列內容，按下按鈕才以視窗顯示目前下載檔案與進度。
+- v0.136.0: UI 底部下載隊列改為按鈕，預設不顯示隊列內容，按下按鈕才顯示目前下載檔案與進度。
 - v0.137.0: GGJAV 的 `var l = ...` 混淆播放器資料會被解碼成直接媒體候選，並套用 MP4/HLS 與 video-N.ggjav.com 備援。
 - v0.138.0: Gimy iframe/player 頁會展開 `parse.php?url=...` API 候選與 iframe `url=` 內的直接媒體候選，並套用接近 Windows 版的 Gimy 串流排序。
 - v0.139.0: Gimy 播放頁會反推出 `/title/`、`/vod/`、`/detail/`、`/voddetail/` 詳情頁備援候選，parse 回應也會辨識 `playurl` 媒體欄位。
@@ -82,6 +82,14 @@
 - v0.198.0: 搜尋流程新增站內搜尋可信 fallback，嚴格關鍵字比對沒有結果時會保留少量確定是影片頁的候選，避免按下載後搜尋列表空白，同時仍排除分類/列表中繼頁。
 - v0.200.0: 搜尋流程重新對齊 Windows 版下載者：不再自行呼叫 MovieFFM live-search API，改用站內搜尋頁與 DuckDuckGo 候選，開啟具體影片頁補齊標題/縮圖後才做精準關鍵字過濾；MovieFFM 會先查目前可用的 `movieffm.me`，並支援 `/tv/`、`/movie/`、`/anime/` 結果路徑。
 - v0.201.0: 修正按下下載後 MovieFFM 搜尋結果仍為空的問題：搜尋頁同一卡片的縮圖連結不再覆蓋真正標題連結，Android 會直接解析 `result-item` 卡片中的影片標題、具體網址與縮圖。
+- v0.210.0: Android `Copy as cURL` 解析新增等號式參數支援，例如 `--url=...`、`--cookie=...`、`--referer=...`、`--user-agent=...`、`--header=...`，補齊更多工具輸出的 cURL 格式。
+- v0.209.0: Android `Copy as cURL` 解析會合併 Unix `\`、Windows CMD `^` 與 PowerShell 反引號的換行續接，並清理 URL 尾端續接符號，避免多行 cURL 貼上後解析錯誤。
+- v0.208.0: Android `Copy as cURL` 解析新增 `--header` 與 `-A/--user-agent` 支援，讓 Firefox 與不同瀏覽器/工具匯出的 cURL 更容易直接沿用保護站請求標頭。
+- v0.207.0: Android `Copy as cURL` 解析補齊 `-b/--cookie` 與 `-e/--referer` 參數，並在掃描下載 URL 前排除這些參數內容，避免 Cookie/Referer 內的網址被誤排入下載。
+- v0.206.0: 下載隊列固定面板只有在展開時才更新隊列內容；收合時不再刷新或改寫隱藏隊列文字，按下按鈕展開後立即讀取最新進度。
+- v0.205.0: 下載隊列內容由彈出視窗改回主畫面固定面板，預設隱藏，按下下載隊列按鈕後在按鈕下方展開並持續刷新進度。
+- v0.204.0: 主操作按鈕改名為「搜尋/下載」，並修正搜尋結果排入下載後 UI 沒有持續顯示進度的問題；Activity 前景時會定時刷新任務摘要。
+- v0.203.0: 按下下載觸發影片搜尋時，畫面會立即顯示「搜尋中....」狀態列與進度圈，搜尋期間暫停下載按鈕以避免重複觸發，搜尋完成或失敗後自動收回狀態。
 - v0.202.0: 搜尋結果來源網站欄改用正式站台名稱顯示，例如 `MovieFFM`，並以 `縱橫四海` 實測確認結果列包含縮圖、檔名/番號與來源網站。
 
 ## 下載功能
@@ -121,7 +129,7 @@
 ## 瀏覽器請求內容
 
 - 支援貼上 `Cookie:`、`Referer:` 等瀏覽器請求資訊。
-- 支援 `Copy as cURL` 文字解析，會提取 URL、Referer、Cookie 與常用安全標頭。
+- 支援 `Copy as cURL` 文字解析，會提取 URL、Referer、Cookie 與常用安全標頭，支援 `-b/--cookie`、`-e/--referer`、`--header`、`-A/--user-agent`、`--url` 參數，並接受常見多行續接與等號式參數格式。
 - 支援 `User-Agent`、`Accept`、`Accept-Language`、`Authorization`、`Sec-Fetch-*` 等標頭。
 - 解析頁面、HLS、DASH、key、init、segment 下載時會延續 Referer、Origin 與必要請求標頭。
 - 內建持久化 Cookie jar，服務或 App 重啟後仍可復用已保存 Cookie。
