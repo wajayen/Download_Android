@@ -69,6 +69,7 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Android input supports browser `Copy as cURL` text and avoids queuing URLs found only inside pasted header values such as Referer.
 - Android input now accepts video titles and JAV-style codes as search queries, searches supported video sites in the background, and shows a selectable result list before queueing the chosen URL.
 - Android search results are presented as thumbnail, title/code, and source-site rows, so users can choose the exact video page before download starts; site-search fallback pages are filtered out of the visible picker, and thumbnails are extracted from nearby cards, meta images, srcset, thumbnail attributes, and loaded with the search-page Referer.
+- Android search result rows now enrich missing or generic card data by opening the concrete video page and reading `og:title`, `<title>`, `h1`, and `og:image` metadata before showing the picker.
 - Android search query detection now treats pasted media filenames by their stem, matching the desktop behavior for inputs such as `title.mp4`, `code.m3u8`, or local-looking paths.
 - Android video search now seeds supported site-search URLs before falling back to search-engine results, improving reliability for MovieFFM, Gimy/Xiaoya/MacCMS-like sites, and common JAV site clusters.
 - Android video search detects JAV-style codes and prioritizes JAV direct-code URLs plus JAV site-search candidates before general video sites.

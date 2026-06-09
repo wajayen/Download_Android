@@ -46,6 +46,9 @@ final class VideoSearchResolver {
     private static final Pattern META_IMAGE = Pattern.compile(
             "<meta\\b[^>]+(?:property|name)=[\"'](?:og:image|twitter:image|twitter:image:src)[\"'][^>]+content=[\"']([^\"']+)[\"']|<meta\\b[^>]+content=[\"']([^\"']+)[\"'][^>]+(?:property|name)=[\"'](?:og:image|twitter:image|twitter:image:src)[\"']",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern META_TITLE = Pattern.compile(
+            "<meta\\b[^>]+(?:property|name)=[\"'](?:og:title|twitter:title|title)[\"'][^>]+content=[\"']([^\"']+)[\"']|<meta\\b[^>]+content=[\"']([^\"']+)[\"'][^>]+(?:property|name)=[\"'](?:og:title|twitter:title|title)[\"']",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern TITLE_ATTR = Pattern.compile(
             "\\b(?:title|alt|aria-label|data-title|data-name)=[\"']([^\"']{2,160})[\"']",
             Pattern.CASE_INSENSITIVE);
@@ -305,7 +308,8 @@ final class VideoSearchResolver {
                 if (out.size() >= MAX_RESULTS) {
                     return;
                 }
-                addResult(result.url, result.title, searchUrl, seen, out, result.thumbnailUrl);
+                RankedResult enriched = enrichSearchResult(result, searchUrl);
+                addResult(enriched.url, enriched.title, searchUrl, seen, out, enriched.thumbnailUrl);
             }
         } catch (IOException ignored) {
             // Skip blocked search pages; the picker should only show concrete video candidates.
@@ -322,12 +326,13 @@ final class VideoSearchResolver {
                 continue;
             }
             String nearbyHtml = htmlWindow(html, matcher.start(), matcher.end());
-            String title = firstNonEmptyTitle(cleanTitle(matcher.group(2)), extractNearbyTitle(nearbyHtml), titleFromUrl(url));
+            String cardHtml = resultCardHtml(html, matcher.start(), matcher.end());
+            String title = firstNonEmptyTitle(cleanTitle(matcher.group(2)), extractNearbyTitle(cardHtml), extractNearbyTitle(nearbyHtml), titleFromUrl(url));
             int score = resultMatchScore(title, url, query);
             if (score < 0) {
                 continue;
             }
-            String thumbnailUrl = extractThumbnailUrl(nearbyHtml, baseUrl);
+            String thumbnailUrl = firstNonEmptyTitle(extractThumbnailUrl(cardHtml, baseUrl), extractThumbnailUrl(nearbyHtml, baseUrl));
             ranked.add(new RankedResult(url, sourceLabel + ": " + title, score, thumbnailUrl));
         }
         Matcher dataMatcher = DATA_LINK.matcher(html == null ? "" : html);
@@ -341,8 +346,9 @@ final class VideoSearchResolver {
                 continue;
             }
             String nearbyHtml = htmlWindow(html, dataMatcher.start(), dataMatcher.end());
-            String title = firstNonEmptyTitle(extractNearbyTitle(nearbyHtml), titleFromUrl(url), "embedded link");
-            String thumbnailUrl = extractThumbnailUrl(nearbyHtml, baseUrl);
+            String cardHtml = resultCardHtml(html, dataMatcher.start(), dataMatcher.end());
+            String title = firstNonEmptyTitle(extractNearbyTitle(cardHtml), extractNearbyTitle(nearbyHtml), titleFromUrl(url), "embedded link");
+            String thumbnailUrl = firstNonEmptyTitle(extractThumbnailUrl(cardHtml, baseUrl), extractThumbnailUrl(nearbyHtml, baseUrl));
             ranked.add(new RankedResult(url, sourceLabel + ": " + title, score, thumbnailUrl));
         }
         Collections.sort(ranked, new Comparator<RankedResult>() {
@@ -375,11 +381,95 @@ final class VideoSearchResolver {
         out.add(new Result(url, cleanTitle(title), MediaResolver.sourceSite(url), refererUrl, thumbnailUrl));
     }
 
+    private static RankedResult enrichSearchResult(RankedResult result, String refererUrl) {
+        if (result == null || result.url == null || result.url.isEmpty()) {
+            return result;
+        }
+        String displayTitle = result.title == null ? "" : result.title.trim();
+        String titleWithoutSite = displayTitle.contains(": ")
+                ? displayTitle.substring(displayTitle.indexOf(": ") + 2).trim()
+                : displayTitle;
+        boolean needsTitle = !looksLikeUsableTitle(titleWithoutSite) || "embedded link".equalsIgnoreCase(titleWithoutSite);
+        boolean needsThumbnail = result.thumbnailUrl == null || result.thumbnailUrl.trim().isEmpty();
+        if (!needsTitle && !needsThumbnail) {
+            return result;
+        }
+        try {
+            String html = fetch(result.url, 5000, 7000);
+            String pageTitle = extractPageTitle(html);
+            String pageThumb = extractThumbnailUrl(html, result.url);
+            String sourcePrefix = "";
+            if (displayTitle.contains(": ")) {
+                sourcePrefix = displayTitle.substring(0, displayTitle.indexOf(": ") + 2);
+            }
+            String title = needsTitle && looksLikeUsableTitle(pageTitle)
+                    ? sourcePrefix + pageTitle
+                    : result.title;
+            String thumb = needsThumbnail && !pageThumb.isEmpty() ? pageThumb : result.thumbnailUrl;
+            return new RankedResult(result.url, title, result.score, thumb);
+        } catch (IOException ignored) {
+            return result;
+        }
+    }
+
     private static String htmlWindow(String html, int start, int end) {
         String text = html == null ? "" : html;
         int from = Math.max(0, start - 2600);
         int to = Math.min(text.length(), end + 3600);
         return from < to ? text.substring(from, to) : "";
+    }
+
+    private static String resultCardHtml(String html, int start, int end) {
+        String text = html == null ? "" : html;
+        int from = Math.max(0, start - 1600);
+        int to = Math.min(text.length(), end + 2200);
+        String[] blockStarts = new String[]{"<article", "<li", "<div", "<section"};
+        for (String marker : blockStarts) {
+            int pos = text.toLowerCase(Locale.US).lastIndexOf(marker, start);
+            if (pos >= 0 && pos > from) {
+                from = pos;
+                break;
+            }
+        }
+        String lowered = text.toLowerCase(Locale.US);
+        int close = firstPositive(
+                lowered.indexOf("</article>", end),
+                lowered.indexOf("</li>", end),
+                lowered.indexOf("</div>", end),
+                lowered.indexOf("</section>", end));
+        if (close >= 0 && close + 12 < to) {
+            to = close + 12;
+        }
+        return from < to ? text.substring(from, to) : "";
+    }
+
+    private static int firstPositive(int... values) {
+        int out = -1;
+        for (int value : values) {
+            if (value >= 0 && (out < 0 || value < out)) {
+                out = value;
+            }
+        }
+        return out;
+    }
+
+    private static String extractPageTitle(String html) {
+        String text = html == null ? "" : html;
+        Matcher metaMatcher = META_TITLE.matcher(text);
+        while (metaMatcher.find()) {
+            String title = cleanTitle(firstNonEmptyTitle(metaMatcher.group(1), metaMatcher.group(2)));
+            if (looksLikeUsableTitle(title)) {
+                return title;
+            }
+        }
+        Matcher titleMatcher = Pattern.compile("<title\\b[^>]*>(.*?)</title>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(text);
+        if (titleMatcher.find()) {
+            String title = cleanTitle(titleMatcher.group(1)).replaceFirst("\\s*[-|].*$", "").trim();
+            if (looksLikeUsableTitle(title)) {
+                return title;
+            }
+        }
+        return extractNearbyTitle(text);
     }
 
     private static String extractThumbnailUrl(String html, String baseUrl) {
