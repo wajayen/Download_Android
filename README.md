@@ -2,7 +2,7 @@
 
 `Download_Android` 是 Windows 版「下載者」的 Android 原生移植專案。目標是在手機上提供接近桌面版的影片搜尋、解析、下載、續傳、播放與診斷能力，同時維持 Android 友善的操作方式。
 
-目前 Android 版本：`0.210.0`（`versionCode 210`）。
+目前 Android 版本：`0.216.0`（`versionCode 216`）。
 
 ## App 特色
 
@@ -82,6 +82,12 @@
 - v0.198.0: 搜尋流程新增站內搜尋可信 fallback，嚴格關鍵字比對沒有結果時會保留少量確定是影片頁的候選，避免按下載後搜尋列表空白，同時仍排除分類/列表中繼頁。
 - v0.200.0: 搜尋流程重新對齊 Windows 版下載者：不再自行呼叫 MovieFFM live-search API，改用站內搜尋頁與 DuckDuckGo 候選，開啟具體影片頁補齊標題/縮圖後才做精準關鍵字過濾；MovieFFM 會先查目前可用的 `movieffm.me`，並支援 `/tv/`、`/movie/`、`/anime/` 結果路徑。
 - v0.201.0: 修正按下下載後 MovieFFM 搜尋結果仍為空的問題：搜尋頁同一卡片的縮圖連結不再覆蓋真正標題連結，Android 會直接解析 `result-item` 卡片中的影片標題、具體網址與縮圖。
+- v0.216.0: 系統下載通知現在會把檔名放在通知內容中，並在 HTTP/HLS/DASH 回報進度時同步更新通知標題與原生進度條，搜尋解析階段則維持明確的準備/解析狀態。
+- v0.215.0: 下載隊列不再用 0% 顯示尚未開始、解析準備、失敗或取消的任務；剛排入顯示「佇列中」，解析中顯示「準備中」，實際下載開始後才顯示百分比或已下載容量。
+- v0.214.0: 搜尋結果點選下載後會自動展開下載隊列；來源解析或媒體準備期間顯示「準備中」而不是停在 0%，避免誤判下載流程卡住。
+- v0.213.0: 瀏覽器請求與 `Copy as cURL` 解析新增 `Origin` 安全標頭保留，下載引擎會將貼上的 Origin 連同 Referer 套用到頁面、HLS、DASH 與分片請求。
+- v0.212.0: Android `Copy as cURL` 解析會辨識並移除 `-O/--remote-name` 參數，避免 fallback 掃描 URL 時受到干擾；遠端檔名仍由 URL 與伺服器 `Content-Disposition` 推導。
+- v0.211.0: Android `Copy as cURL` 解析新增 `-o/--output` 檔名支援；單一 URL 且檔名欄空白時，會自動用 cURL 輸出檔名作為下載檔名。
 - v0.210.0: Android `Copy as cURL` 解析新增等號式參數支援，例如 `--url=...`、`--cookie=...`、`--referer=...`、`--user-agent=...`、`--header=...`，補齊更多工具輸出的 cURL 格式。
 - v0.209.0: Android `Copy as cURL` 解析會合併 Unix `\`、Windows CMD `^` 與 PowerShell 反引號的換行續接，並清理 URL 尾端續接符號，避免多行 cURL 貼上後解析錯誤。
 - v0.208.0: Android `Copy as cURL` 解析新增 `--header` 與 `-A/--user-agent` 支援，讓 Firefox 與不同瀏覽器/工具匯出的 cURL 更容易直接沿用保護站請求標頭。
@@ -129,8 +135,8 @@
 ## 瀏覽器請求內容
 
 - 支援貼上 `Cookie:`、`Referer:` 等瀏覽器請求資訊。
-- 支援 `Copy as cURL` 文字解析，會提取 URL、Referer、Cookie 與常用安全標頭，支援 `-b/--cookie`、`-e/--referer`、`--header`、`-A/--user-agent`、`--url` 參數，並接受常見多行續接與等號式參數格式。
-- 支援 `User-Agent`、`Accept`、`Accept-Language`、`Authorization`、`Sec-Fetch-*` 等標頭。
+- 支援 `Copy as cURL` 文字解析，會提取 URL、Referer、Cookie、輸出檔名與常用安全標頭，支援 `-b/--cookie`、`-e/--referer`、`--header`、`-A/--user-agent`、`--url`、`-o/--output`、`-O/--remote-name` 參數，並接受常見多行續接與等號式參數格式。
+- 支援 `User-Agent`、`Accept`、`Accept-Language`、`Authorization`、`Origin`、`Sec-Fetch-*` 等標頭。
 - 解析頁面、HLS、DASH、key、init、segment 下載時會延續 Referer、Origin 與必要請求標頭。
 - 內建持久化 Cookie jar，服務或 App 重啟後仍可復用已保存 Cookie。
 

@@ -68,6 +68,8 @@ public final class MainActivity extends Activity {
     private static final Pattern CURL_COOKIE = Pattern.compile("(?:^|\\s)(?:-b|--cookie)(?:\\s+|=)(?:'([^']*)'|\"([^\"]*)\"|(\\S+))", Pattern.CASE_INSENSITIVE);
     private static final Pattern CURL_REFERER = Pattern.compile("(?:^|\\s)(?:-e|--referer)(?:\\s+|=)(?:'([^']*)'|\"([^\"]*)\"|(\\S+))", Pattern.CASE_INSENSITIVE);
     private static final Pattern CURL_USER_AGENT = Pattern.compile("(?:^|\\s)(?:-A|--user-agent)(?:\\s+|=)(?:'([^']*)'|\"([^\"]*)\"|(\\S+))", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CURL_OUTPUT = Pattern.compile("(?:^|\\s)(?:-o|--output)(?:\\s+|=)(?:'([^']*)'|\"([^\"]*)\"|(\\S+))", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CURL_REMOTE_NAME = Pattern.compile("(?:^|\\s)(?:-O|--remote-name)(?=\\s|$)", Pattern.CASE_INSENSITIVE);
     private static final Pattern CURL_URL = Pattern.compile("(?:^|\\s)(?:curl|--url)(?:\\s+|=)(?:--location\\s+|--request\\s+\\S+\\s+|--compressed\\s+)*['\"]?(https?://[^\\s'\"<>]+)['\"]?", Pattern.CASE_INSENSITIVE);
     private EditText urlInput;
     private EditText fileNameInput;
@@ -113,12 +115,14 @@ public final class MainActivity extends Activity {
         final String referer;
         final String cookieHeader;
         final String headersJson;
+        final String outputFileName;
 
-        BrowserRequestContext(List<String> urls, String referer, String cookieHeader, String headersJson) {
+        BrowserRequestContext(List<String> urls, String referer, String cookieHeader, String headersJson, String outputFileName) {
             this.urls = urls;
             this.referer = referer;
             this.cookieHeader = cookieHeader;
             this.headersJson = headersJson;
+            this.outputFileName = outputFileName;
         }
     }
 
@@ -534,13 +538,22 @@ public final class MainActivity extends Activity {
 
     private void toggleDownloadQueuePanel() {
         downloadQueueVisible = !downloadQueueVisible;
+        applyDownloadQueueVisibility();
+        refreshStatus();
+    }
+
+    private void showDownloadQueuePanel() {
+        downloadQueueVisible = true;
+        applyDownloadQueueVisibility();
+    }
+
+    private void applyDownloadQueueVisibility() {
         if (downloadQueuePanel != null) {
             downloadQueuePanel.setVisibility(downloadQueueVisible ? View.VISIBLE : View.GONE);
         }
         if (downloadQueueVisible && statusText != null) {
             statusText.setText(downloadQueueMessage());
         }
-        refreshStatus();
     }
 
     private void openDownloadDirectoryPicker() {
@@ -578,6 +591,9 @@ public final class MainActivity extends Activity {
         }
 
         String requestedName = fileNameInput.getText().toString();
+        if (urls.size() == 1 && FileNames.sanitize(requestedName).isEmpty() && !requestContext.outputFileName.isEmpty()) {
+            requestedName = requestContext.outputFileName;
+        }
         int queued = 0;
         String firstName = "";
         StringBuilder queuedPreview = new StringBuilder();
@@ -766,9 +782,7 @@ public final class MainActivity extends Activity {
         }
         startDownloaderService(DownloadService.startIntent(this, result.url, fileName, result.refererUrl, "", "{}", playAfterThreshold));
         fileNameInput.setText(fileName);
-        if (downloadQueueVisible) {
-            statusText.setText(queueLine(fileName, 0L, -1L));
-        }
+        showDownloadQueuePanel();
         refreshStatus();
     }
 
@@ -879,6 +893,7 @@ public final class MainActivity extends Activity {
         String raw = normalizePastedCurlText(text);
         String referer = "";
         String cookieHeader = "";
+        String outputFileName = "";
         JSONObject headers = new JSONObject();
         StringBuilder urlText = new StringBuilder();
         String[] lines = raw.split("\\r?\\n");
@@ -931,6 +946,14 @@ public final class MainActivity extends Activity {
                 putHeader(headers, "User-Agent", value.trim());
             }
         }
+        Matcher curlOutput = CURL_OUTPUT.matcher(raw);
+        while (curlOutput.find()) {
+            String value = firstMatchedGroup(curlOutput, 1, 2, 3);
+            String clean = FileNames.sanitize(value);
+            if (!clean.isEmpty()) {
+                outputFileName = clean;
+            }
+        }
         List<String> urls = extractCurlTargetUrls(raw);
         if (urls.isEmpty()) {
             urls = extractUrls(removeCurlRequestArguments(urlText.toString()));
@@ -938,7 +961,7 @@ public final class MainActivity extends Activity {
         if (urls.isEmpty()) {
             urls = extractUrls(removeCurlRequestArguments(raw));
         }
-        return new BrowserRequestContext(urls, firstUrl(referer), cookieHeader, headers.toString());
+        return new BrowserRequestContext(urls, firstUrl(referer), cookieHeader, headers.toString(), outputFileName);
     }
 
     private String normalizePastedCurlText(String text) {
@@ -969,6 +992,8 @@ public final class MainActivity extends Activity {
         cleaned = CURL_COOKIE.matcher(cleaned).replaceAll(" ");
         cleaned = CURL_REFERER.matcher(cleaned).replaceAll(" ");
         cleaned = CURL_USER_AGENT.matcher(cleaned).replaceAll(" ");
+        cleaned = CURL_OUTPUT.matcher(cleaned).replaceAll(" ");
+        cleaned = CURL_REMOTE_NAME.matcher(cleaned).replaceAll(" ");
         return cleaned;
     }
 
@@ -990,6 +1015,7 @@ public final class MainActivity extends Activity {
                 || "Authorization".equals(name)
                 || "Cache-Control".equals(name)
                 || "DNT".equals(name)
+                || "Origin".equals(name)
                 || "Pragma".equals(name)
                 || "Priority".equals(name)
                 || "X-Requested-With".equals(name)
@@ -1013,6 +1039,7 @@ public final class MainActivity extends Activity {
         if ("cache-control".equals(name)) return "Cache-Control";
         if ("cookie".equals(name)) return "Cookie";
         if ("dnt".equals(name)) return "DNT";
+        if ("origin".equals(name)) return "Origin";
         if ("pragma".equals(name)) return "Pragma";
         if ("priority".equals(name)) return "Priority";
         if ("referer".equals(name)) return "Referer";

@@ -423,11 +423,20 @@ final class TaskStore {
             builder.append(task.optString("fileName", "download.bin"));
             long downloaded = task.optLong("downloaded", 0L);
             long total = task.optLong("total", -1L);
+            String status = task.optString("status");
             builder.append("  ");
             if (total > 0L) {
                 builder.append(String.format(Locale.US, "%.1f%%", downloaded * 100.0 / total));
             } else if (downloaded > 0L) {
                 builder.append(formatBytes(downloaded));
+            } else if (STATUS_RUNNING.equals(status)) {
+                builder.append(text(R.string.task_progress_preparing));
+            } else if (STATUS_QUEUED.equals(status)) {
+                builder.append(text(R.string.task_label_queued));
+            } else if (STATUS_FAILED.equals(status)) {
+                builder.append(text(R.string.task_label_failed));
+            } else if (STATUS_CANCELLED.equals(status)) {
+                builder.append(text(R.string.task_label_cancelled));
             } else {
                 builder.append("0%");
             }

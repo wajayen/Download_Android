@@ -87,6 +87,7 @@
     <string name="task_message_alternate">代替ソースを追加しました</string>
     <string name="task_message_selected_source">選択したソースを追加しました</string>
     <string name="task_summary_empty">ダウンロード待ちはありません</string>
+    <string name="task_progress_preparing">準備中</string>
     <string name="task_label_queued">待機中</string>
     <string name="task_label_running">ダウンロード中</string>
     <string name="task_label_done">完了</string>

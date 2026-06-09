@@ -91,6 +91,7 @@
     <string name="task_message_alternate">Queued alternate source</string>
     <string name="task_message_selected_source">Queued selected source</string>
     <string name="task_summary_empty">No downloads queued</string>
+    <string name="task_progress_preparing">Preparing</string>
     <string name="task_label_queued">Queued</string>
     <string name="task_label_running">Downloading</string>
     <string name="task_label_done">Done</string>

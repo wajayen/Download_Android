@@ -87,6 +87,7 @@
     <string name="task_message_alternate">已排入替代來源</string>
     <string name="task_message_selected_source">已排入選取來源</string>
     <string name="task_summary_empty">目前沒有下載佇列</string>
+    <string name="task_progress_preparing">準備中</string>
     <string name="task_label_queued">佇列中</string>
     <string name="task_label_running">下載中</string>
     <string name="task_label_done">完成</string>

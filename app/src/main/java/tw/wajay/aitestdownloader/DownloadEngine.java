@@ -888,6 +888,7 @@ final class DownloadEngine {
                 || "Authorization".equals(name)
                 || "Cache-Control".equals(name)
                 || "DNT".equals(name)
+                || "Origin".equals(name)
                 || "Pragma".equals(name)
                 || "Priority".equals(name)
                 || "X-Requested-With".equals(name)

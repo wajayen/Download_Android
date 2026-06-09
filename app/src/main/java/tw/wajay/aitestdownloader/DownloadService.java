@@ -158,10 +158,18 @@ public final class DownloadService extends Service {
     }
 
     private void updateNotification(String text, long downloaded, long total, boolean ongoing) {
-        notificationManager.notify(NOTIFICATION_ID, buildNotification(text, downloaded, total, ongoing));
+        updateNotification(text, "", downloaded, total, ongoing);
+    }
+
+    private void updateNotification(String text, String detailText, long downloaded, long total, boolean ongoing) {
+        notificationManager.notify(NOTIFICATION_ID, buildNotification(text, detailText, downloaded, total, ongoing));
     }
 
     private Notification buildNotification(String text, long downloaded, long total, boolean ongoing) {
+        return buildNotification(text, "", downloaded, total, ongoing);
+    }
+
+    private Notification buildNotification(String text, String detailText, long downloaded, long total, boolean ongoing) {
         Intent openIntent = new Intent(this, MainActivity.class);
         PendingIntent contentIntent = PendingIntent.getActivity(
                 this,
@@ -180,14 +188,14 @@ public final class DownloadService extends Service {
                 : new Notification.Builder(this);
         builder.setSmallIcon(android.R.drawable.stat_sys_download)
                 .setContentTitle(text)
+                .setContentText(detailText == null ? "" : detailText)
                 .setContentIntent(contentIntent)
                 .setOngoing(ongoing)
                 .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.notification_action_cancel), cancelIntent);
 
         if (total > 0L) {
             int progress = (int) Math.max(0L, Math.min(100L, downloaded * 100L / total));
-            builder.setProgress(100, progress, false)
-                    .setContentTitle(text + " " + progress + "%");
+            builder.setProgress(100, progress, false);
         } else if (ongoing) {
             builder.setProgress(0, 0, true);
         }
@@ -259,7 +267,7 @@ public final class DownloadService extends Service {
         public void onStatus(String text) {
             taskStore.status(taskId, text);
             eventLog.write("status", taskId, text);
-            updateNotification(text, 0L, 0L, true);
+            updateNotification(text, fileName, 0L, 0L, true);
         }
 
         @Override
@@ -278,7 +286,12 @@ public final class DownloadService extends Service {
         public void onProgress(long downloaded, long total) {
             taskStore.progress(taskId, downloaded, total);
             maybeStartPlayback();
-            updateNotification(getString(R.string.notification_downloading_progress, formatProgress(downloaded, total)), downloaded, total, true);
+            updateNotification(
+                    getString(R.string.notification_downloading_progress, formatProgress(downloaded, total)),
+                    fileName,
+                    downloaded,
+                    total,
+                    true);
         }
 
         @Override
@@ -341,7 +354,7 @@ public final class DownloadService extends Service {
                 playbackStarted = true;
                 eventLog.write("playback_started", taskId, partial.getAbsolutePath());
                 taskStore.playbackStarted(taskId, getString(R.string.task_message_playback_started));
-                updateNotification(getString(R.string.notification_playback_started), partial.length(), 0L, true);
+                updateNotification(getString(R.string.notification_playback_started), fileName, partial.length(), 0L, true);
             } catch (Exception error) {
                 playbackStarted = true;
                 eventLog.write("playback_failed", taskId, error.getMessage() == null ? error.toString() : error.getMessage());

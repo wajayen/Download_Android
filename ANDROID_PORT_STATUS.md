@@ -10,6 +10,9 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Main action button is labeled `搜尋/下載` / localized Search/Download, matching that the same action either searches by title/code or queues direct URLs.
 - Download queue content is now hidden by default behind a bottom Download Queue button; tapping the button expands a fixed queue panel directly below the button with the current file/progress content.
 - Download queue progress now refreshes the fixed queue text only while the queue panel is expanded; collapsed queue content is left untouched until the user opens it again.
+- Search-result downloads now expand the download queue immediately after a result is selected, and unresolved page/media preparation shows a localized Preparing state instead of a misleading 0% progress value.
+- Download queue summaries now show localized state labels for queued, failed, and cancelled tasks instead of a fake 0% value; real progress is shown only after byte or segment progress exists.
+- System download notifications now include the active filename as notification content and keep the native progress bar synchronized with HTTP byte progress and HLS/DASH segment progress.
 - Overflow settings now hides the system-default and four-language selector entries and instead exposes a download-directory picker backed by Android's system folder selection.
 - Completed outputs now export to the user-selected download directory when one is configured, falling back to public Downloads/AI Test Downloader otherwise.
 - Completed-output export now falls back to public Downloads/AI Test Downloader if the selected download directory becomes unavailable or its persisted Android permission is revoked.
@@ -63,7 +66,7 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Resolved page URLs propagate Referer and Origin headers into HTTP, HLS, and DASH manifest/key/init/segment requests.
 - HTTP requests share an app-wide persistent cookie jar so cookies captured during page resolution can be reused by later manifest and media requests after service or app restarts.
 - Android input accepts pasted browser request context: `Cookie:` and `Referer:` headers are parsed, persisted, and applied to queued downloads.
-- Android input accepts additional safe pasted request headers such as `User-Agent`, `Accept`, `Accept-Language`, `Authorization`, and fetch metadata headers.
+- Android input accepts additional safe pasted request headers such as `User-Agent`, `Accept`, `Accept-Language`, `Authorization`, `Origin`, and fetch metadata headers.
 - Android input now preserves more safe browser request headers from copied requests, including `Cache-Control`, `DNT`, `Pragma`, `Priority`, `Sec-Fetch-User`, and safe `Accept-Encoding: identity`.
 - Android HTTP requests now default to `Accept-Encoding: identity` so HTML, HLS, DASH, and segment reads do not accidentally parse compressed bytes as plain text/media.
 - Android text response parsing now honors `Content-Type` charset values for pages, HLS/DASH manifests, and Anime1 API responses, falling back to UTF-8.
@@ -73,6 +76,9 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Android `Copy as cURL` parsing now accepts `--header` in addition to `-H`, and maps `-A/--user-agent` into the safe request-header set before queueing downloads.
 - Android `Copy as cURL` parsing now normalizes Unix backslash, Windows CMD caret, and PowerShell backtick line continuations before extracting URLs and headers, and trims leftover continuation markers from URL tails.
 - Android `Copy as cURL` parsing now accepts equals-style options such as `--url=...`, `--cookie=...`, `--referer=...`, `--user-agent=...`, and `--header=...`, matching additional browser/tool exports.
+- Android `Copy as cURL` parsing now reads `-o/--output` and uses the sanitized output filename for single-URL downloads when the manual filename field is blank.
+- Android `Copy as cURL` parsing now recognizes and strips `-O/--remote-name` before fallback URL scanning, while leaving filename choice to URL and `Content-Disposition` inference.
+- Pasted `Origin` headers are now preserved through Android task storage and accepted by `DownloadEngine`, so protected HLS/DASH/API requests can keep browser-style cross-origin context alongside Referer.
 - Android input now accepts video titles and JAV-style codes as search queries, searches supported video sites in the background, shows an in-screen localized `搜尋中....` progress row while search is running, and shows a selectable result list before queueing the chosen URL.
 - Android search results are presented as thumbnail, title/code, and source-site rows, so users can choose the exact video page before download starts; site-search fallback pages are filtered out of the visible picker, and thumbnails are extracted from nearby cards, meta images, srcset, thumbnail attributes, and loaded with the search-page Referer.
 - Android search result rows now enrich missing or generic card data by opening the concrete video page and reading `og:title`, `<title>`, `h1`, and `og:image` metadata before showing the picker.
