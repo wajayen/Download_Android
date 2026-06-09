@@ -40,6 +40,15 @@ final class VideoSearchResolver {
     private static final Pattern IMAGE_SRC = Pattern.compile(
             "<img\\b[^>]+(?:src|data-src|data-original|data-lazy-src|data-thumb|data-poster)=[\"']([^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern IMAGE_SRCSET = Pattern.compile(
+            "<img\\b[^>]+(?:srcset|data-srcset)=[\"']([^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern META_IMAGE = Pattern.compile(
+            "<meta\\b[^>]+(?:property|name)=[\"'](?:og:image|twitter:image|twitter:image:src)[\"'][^>]+content=[\"']([^\"']+)[\"']|<meta\\b[^>]+content=[\"']([^\"']+)[\"'][^>]+(?:property|name)=[\"'](?:og:image|twitter:image|twitter:image:src)[\"']",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern TITLE_ATTR = Pattern.compile(
+            "\\b(?:title|alt|aria-label|data-title|data-name)=[\"']([^\"']{2,160})[\"']",
+            Pattern.CASE_INSENSITIVE);
 
     private VideoSearchResolver() {
     }
@@ -156,7 +165,6 @@ final class VideoSearchResolver {
                 collectSiteSearchResults(value, template[0], query, seen, out);
                 fetchedTemplates++;
             }
-            addResult(value, template[0] + " site search: " + query, "", seen, out);
         }
     }
 
@@ -296,7 +304,7 @@ final class VideoSearchResolver {
                 addResult(result.url, result.title, searchUrl, seen, out, result.thumbnailUrl);
             }
         } catch (IOException ignored) {
-            // Keep the direct search page as a fallback candidate when a site blocks or times out.
+            // Skip blocked search pages; the picker should only show concrete video candidates.
         }
     }
 
@@ -309,12 +317,12 @@ final class VideoSearchResolver {
             if (url.isEmpty() || !localSeen.add(url) || !looksLikeSearchResultPath(url)) {
                 continue;
             }
-            String title = cleanTitle(matcher.group(2));
+            String nearbyHtml = htmlWindow(html, matcher.start(), matcher.end());
+            String title = firstNonEmptyTitle(cleanTitle(matcher.group(2)), extractNearbyTitle(nearbyHtml), titleFromUrl(url));
             int score = resultMatchScore(title, url, query);
             if (score < 0) {
                 continue;
             }
-            String nearbyHtml = htmlWindow(html, matcher.start(), matcher.end());
             String thumbnailUrl = extractThumbnailUrl(nearbyHtml, baseUrl);
             ranked.add(new RankedResult(url, sourceLabel + ": " + title, score, thumbnailUrl));
         }
@@ -329,8 +337,9 @@ final class VideoSearchResolver {
                 continue;
             }
             String nearbyHtml = htmlWindow(html, dataMatcher.start(), dataMatcher.end());
+            String title = firstNonEmptyTitle(extractNearbyTitle(nearbyHtml), titleFromUrl(url), "embedded link");
             String thumbnailUrl = extractThumbnailUrl(nearbyHtml, baseUrl);
-            ranked.add(new RankedResult(url, sourceLabel + ": embedded link", score, thumbnailUrl));
+            ranked.add(new RankedResult(url, sourceLabel + ": " + title, score, thumbnailUrl));
         }
         Collections.sort(ranked, new Comparator<RankedResult>() {
             @Override
@@ -364,12 +373,20 @@ final class VideoSearchResolver {
 
     private static String htmlWindow(String html, int start, int end) {
         String text = html == null ? "" : html;
-        int from = Math.max(0, start - 1200);
-        int to = Math.min(text.length(), end + 2200);
+        int from = Math.max(0, start - 2600);
+        int to = Math.min(text.length(), end + 3600);
         return from < to ? text.substring(from, to) : "";
     }
 
     private static String extractThumbnailUrl(String html, String baseUrl) {
+        Matcher metaMatcher = META_IMAGE.matcher(html == null ? "" : html);
+        while (metaMatcher.find()) {
+            String raw = firstNonEmptyTitle(metaMatcher.group(1), metaMatcher.group(2));
+            String url = normalizeResultUrl(raw, baseUrl);
+            if (looksLikeThumbnailUrl(url)) {
+                return url;
+            }
+        }
         Matcher matcher = IMAGE_SRC.matcher(html == null ? "" : html);
         while (matcher.find()) {
             String raw = matcher.group(1);
@@ -378,12 +395,86 @@ final class VideoSearchResolver {
                 return url;
             }
         }
+        Matcher srcsetMatcher = IMAGE_SRCSET.matcher(html == null ? "" : html);
+        while (srcsetMatcher.find()) {
+            for (String candidate : srcsetMatcher.group(1).split(",")) {
+                String raw = candidate.trim().split("\\s+")[0];
+                String url = normalizeResultUrl(raw, baseUrl);
+                if (looksLikeThumbnailUrl(url)) {
+                    return url;
+                }
+            }
+        }
         return "";
+    }
+
+    private static String extractNearbyTitle(String html) {
+        String text = html == null ? "" : html;
+        Matcher attrMatcher = TITLE_ATTR.matcher(text);
+        while (attrMatcher.find()) {
+            String title = cleanTitle(attrMatcher.group(1));
+            if (looksLikeUsableTitle(title)) {
+                return title;
+            }
+        }
+        Matcher headingMatcher = Pattern.compile("<(?:h1|h2|h3|h4|strong|span|p)\\b[^>]*>(.*?)</(?:h1|h2|h3|h4|strong|span|p)>",
+                Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(text);
+        while (headingMatcher.find()) {
+            String title = cleanTitle(headingMatcher.group(1));
+            if (looksLikeUsableTitle(title)) {
+                return title;
+            }
+        }
+        return "";
+    }
+
+    private static String firstNonEmptyTitle(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            String title = value == null ? "" : value.trim();
+            if (!title.isEmpty()) {
+                return title;
+            }
+        }
+        return "";
+    }
+
+    private static boolean looksLikeUsableTitle(String title) {
+        String value = title == null ? "" : title.trim();
+        if (value.length() < 2 || value.length() > 120) {
+            return false;
+        }
+        String lowered = value.toLowerCase(Locale.US);
+        return !lowered.equals("play")
+                && !lowered.equals("download")
+                && !lowered.equals("watch")
+                && !lowered.equals("more")
+                && !lowered.contains("javascript:");
+    }
+
+    private static String titleFromUrl(String rawUrl) {
+        try {
+            String path = Uri.parse(rawUrl == null ? "" : rawUrl).getLastPathSegment();
+            String title = path == null ? "" : URLDecoder.decode(path, "UTF-8");
+            title = title.replaceFirst("(?i)\\.(?:html?|php|mp4|m4v|webm|m3u8|mpd)$", "");
+            title = title.replace('-', ' ').replace('_', ' ').trim();
+            return cleanTitle(title);
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private static boolean looksLikeThumbnailUrl(String rawUrl) {
         String url = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            return false;
+        }
+        if (url.startsWith("data:")
+                || url.contains("blank.")
+                || url.contains("placeholder")
+                || url.contains("loading")) {
             return false;
         }
         return !url.endsWith(".svg")

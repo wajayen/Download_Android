@@ -35,6 +35,7 @@ import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -68,6 +69,9 @@ final class DownloadEngine {
     private static final Pattern ATTR_MEDIA_URL = Pattern.compile(
             "(?:src|href|file|url)\\s*[:=]\\s*[\"']([^\"']+?\\.(?:m3u8|mp4|mpd|webm|m4v)(?:\\?[^\"']*)?)[\"']",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern ESCAPED_MEDIA_URL = Pattern.compile(
+            "https?:\\\\/\\\\/[^\\s\"'<>]+?\\.(?:m3u8|mp4|mpd|webm|m4v)(?:\\?[^\\s\"'<>]*)?",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern ATTRIBUTE_PAIR = Pattern.compile("([A-Z0-9-]+)=((?:\"[^\"]+\")|[^,]+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern ANIME1_API_REQ = Pattern.compile("data-apireq=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
     private static final Pattern BESTJAVPORN_VIDEO_ID = Pattern.compile("\\bvideo-id=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
@@ -99,6 +103,26 @@ final class DownloadEngine {
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern SUPJAV_CHILD_SRC = Pattern.compile("src=[\"'](\\?c=[^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
     private static final Pattern SUPJAV_HLS_FIELD = Pattern.compile("[\"']hls\\d+[\"']\\s*:\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    private static final Pattern EVOLOAD_REDIRECT_LINK = Pattern.compile("redirect_link\\s*=\\s*['\"]([^'\"]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TKTUBE_QUALITY = Pattern.compile("_(\\d{3,4})p\\.mp4", Pattern.CASE_INSENSITIVE);
+    private static final Pattern JAVFILMS_DMM_VIDEO_ID = Pattern.compile("/get/video/([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ITTV_DETAIL_PATH = Pattern.compile("/(?:detail|voddetail)/\\d+\\.html$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ITTV_PLAY_PATH = Pattern.compile("/(?:vodplay|play)/", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ITTV_PLAY_ATTR = Pattern.compile(
+            "(?:href|data-href|data-url)=[\"']([^\"']*(?:/(?:vodplay|play)/)[^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern ITTV_PLAY_PATH_TEXT = Pattern.compile(
+            "/(?:vodplay|play)/\\d+(?:-\\d+){0,3}\\.html",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern TV777_DETAIL_PATH = Pattern.compile("/vod/detail/id/\\d+\\.html$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TV777_PLAY_PATH = Pattern.compile("/vod/play/id/\\d+/sid/\\d+/nid/\\d+\\.html$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TV777_EPISODE_LINK = Pattern.compile(
+            "href=[\"']((?:(?:https?:)?//play\\.777tv\\.ai)?/vod/play/id/\\d+/sid/\\d+/nid/\\d+\\.html)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern THANJU_PAGE_PATH = Pattern.compile("/(?:detail|play)/\\d+(?:/\\d+-\\d+)?\\.html$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern THANJU_PLAY_LINK = Pattern.compile(
+            "href=[\"']([^\"']*/play/\\d+/\\d+-\\d+\\.html)[\"']",
+            Pattern.CASE_INSENSITIVE);
     private static final int SEGMENT_RETRY_LIMIT = 3;
     private static final int PAGE_RESOLVE_DEPTH_LIMIT = 4;
     private static final int MAX_DASH_DURATION_SEGMENTS = 2000;
@@ -836,6 +860,36 @@ final class DownloadEngine {
         if ("supjav".equals(site)) {
             return resolveSupJavMedia(pageUrl, pageText);
         }
+        if ("evoload".equals(site)) {
+            return resolveEvoLoadMedia(pageUrl, pageText);
+        }
+        if ("tktube".equals(site)) {
+            return resolveTkTubeMedia(pageUrl, pageText);
+        }
+        if ("18jav".equals(site)) {
+            return resolve18JavMedia(pageUrl, pageText);
+        }
+        if ("hanime1".equals(site)) {
+            return resolveHanime1Media(pageUrl, pageText);
+        }
+        if ("ppp.porn".equals(site)) {
+            return resolvePppPornMedia(pageUrl, pageText);
+        }
+        if ("javfilms".equals(site)) {
+            return resolveJavFilmsMedia(pageUrl, pageText);
+        }
+        if ("missav".equals(site)) {
+            return resolveMissAvMedia(pageUrl, pageText);
+        }
+        if ("777tv".equals(site)) {
+            return resolve777TvMedia(pageUrl, pageText);
+        }
+        if ("99itv".equals(site)) {
+            return resolve99ItvMedia(pageUrl, pageText);
+        }
+        if ("thanju".equals(site)) {
+            return resolveThanjuMedia(pageUrl, pageText);
+        }
         return null;
     }
 
@@ -1134,6 +1188,554 @@ final class DownloadEngine {
             return null;
         }
         return new SiteMediaResult("supjav", candidates.get(0), candidates, firstNonEmpty(firstReferer, pageUrl));
+    }
+
+    private SiteMediaResult resolveEvoLoadMedia(String pageUrl, String pageText) throws IOException {
+        List<String> pageVariants = new ArrayList<>();
+        pageVariants.add(pageText == null ? "" : pageText);
+        Matcher redirectMatcher = EVOLOAD_REDIRECT_LINK.matcher(pageText == null ? "" : pageText);
+        if (redirectMatcher.find()) {
+            String redirectBase = htmlDecoded(redirectMatcher.group(1)).trim();
+            String redirectUrl = joinUrl(pageUrl, redirectBase + "fp=-5");
+            if (!redirectUrl.isEmpty() && !redirectUrl.equals(pageUrl)) {
+                try {
+                    pageVariants.add(readText(redirectUrl, pageUrl));
+                } catch (IOException ignored) {
+                    // The original Evoload page can still expose media candidates.
+                }
+            }
+        }
+        if (isParkedEvoLoadPage(pageVariants)) {
+            throw new IOException("EvoLoad source unavailable");
+        }
+        List<String> candidates = new ArrayList<>();
+        for (String variant : pageVariants) {
+            candidates.addAll(extractMediaCandidates(variant, pageUrl));
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("evoload", candidates.get(0), candidates, pageUrl);
+    }
+
+    private boolean isParkedEvoLoadPage(List<String> pageVariants) {
+        for (String variant : pageVariants) {
+            String text = variant == null ? "" : variant.toLowerCase(Locale.US);
+            if (text.contains("assets.abovedomains.com")
+                    || text.contains("forsale.min.js")
+                    || text.contains("domain may be for sale")
+                    || text.contains("this domain is for sale")
+                    || text.contains("buy this domain")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<String> prioritizeManifestCandidates(List<String> candidates) {
+        List<String> out = new ArrayList<>();
+        for (String candidate : candidates) {
+            if (isHlsUrl(candidate) || isDashUrl(candidate)) {
+                out.add(candidate);
+            }
+        }
+        for (String candidate : candidates) {
+            if (!out.contains(candidate)) {
+                out.add(candidate);
+            }
+        }
+        return out;
+    }
+
+    private SiteMediaResult resolveTkTubeMedia(String pageUrl, String pageText) {
+        List<String> candidates = extractTkTubeMediaCandidates(pageUrl, pageText);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("tktube", candidates.get(0), candidates, pageUrl);
+    }
+
+    private List<String> extractTkTubeMediaCandidates(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        for (String candidate : extractMediaCandidates(pageText == null ? "" : pageText, pageUrl)) {
+            String lowered = candidate == null ? "" : candidate.toLowerCase(Locale.US);
+            if (!lowered.contains("/get_file/") || !lowered.contains(".mp4")) {
+                continue;
+            }
+            if (lowered.contains("preview")
+                    || lowered.contains("screenshot")
+                    || lowered.contains(".jpg")
+                    || lowered.contains(".jpeg")
+                    || lowered.contains(".png")
+                    || lowered.contains(".webp")) {
+                continue;
+            }
+            addUnique(candidates, candidate);
+        }
+        Collections.sort(candidates, new Comparator<String>() {
+            @Override
+            public int compare(String left, String right) {
+                return Integer.compare(tkTubeMediaPriority(left), tkTubeMediaPriority(right));
+            }
+        });
+        return candidates;
+    }
+
+    private int tkTubeMediaPriority(String rawUrl) {
+        Matcher matcher = TKTUBE_QUALITY.matcher(rawUrl == null ? "" : rawUrl);
+        if (!matcher.find()) {
+            return 0;
+        }
+        return -parseInt(matcher.group(1), 0);
+    }
+
+    private SiteMediaResult resolve18JavMedia(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        for (String candidate : extractMediaCandidates(pageText == null ? "" : pageText, pageUrl)) {
+            if (isMediaUrl(candidate) && !isPreviewMediaUrl(candidate) && !looksLikeImageUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("18jav", candidates.get(0), candidates, pageUrl);
+    }
+
+    private boolean isPreviewMediaUrl(String rawUrl) {
+        String lowered = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        return lowered.contains("imgstream1.com")
+                || lowered.contains("gifb.")
+                || lowered.contains("fchost1.")
+                || lowered.contains("fbhost1.")
+                || lowered.contains("preview")
+                || lowered.contains("screenshot");
+    }
+
+    private SiteMediaResult resolveHanime1Media(String pageUrl, String pageText) {
+        if (!pagePathContains(pageUrl, "watch")) {
+            return null;
+        }
+        List<String> candidates = prioritizeManifestCandidates(dedupeMediaCandidates(
+                extractMediaCandidates(pageText == null ? "" : pageText, pageUrl)));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        String origin = firstNonEmpty(originFromUrl(pageUrl), "https://hanime1.me");
+        return new SiteMediaResult("hanime1", candidates.get(0), candidates, origin + "/");
+    }
+
+    private SiteMediaResult resolvePppPornMedia(String pageUrl, String pageText) {
+        if (!pagePathContains(pageUrl, "/v/")) {
+            return null;
+        }
+        List<String> candidates = prioritizeManifestCandidates(dedupeMediaCandidates(
+                extractMediaCandidates(pageText == null ? "" : pageText, pageUrl)));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("ppp.porn", candidates.get(0), candidates, pageUrl);
+    }
+
+    private boolean pagePathContains(String rawUrl, String marker) {
+        try {
+            return new URL(rawUrl).getPath().toLowerCase(Locale.US).contains(marker.toLowerCase(Locale.US));
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private SiteMediaResult resolveJavFilmsMedia(String pageUrl, String pageText) {
+        if (!pagePathContains(pageUrl, "/video/")) {
+            return null;
+        }
+        List<String> manifestCandidates = new ArrayList<>();
+        List<String> directCandidates = new ArrayList<>();
+        for (String candidate : extractMediaCandidates(pageText == null ? "" : pageText, pageUrl)) {
+            if (!isMediaUrl(candidate) || looksLikeImageUrl(candidate)) {
+                continue;
+            }
+            if (isHlsUrl(candidate) || isDashUrl(candidate)) {
+                addUnique(manifestCandidates, candidate);
+            } else if (isJavFilmsDirectMedia(candidate)) {
+                addUnique(directCandidates, candidate);
+            }
+        }
+        manifestCandidates = prioritizeManifestCandidates(dedupeMediaCandidates(manifestCandidates));
+        if (!manifestCandidates.isEmpty()) {
+            return new SiteMediaResult("javfilms", manifestCandidates.get(0), manifestCandidates, pageUrl);
+        }
+        directCandidates = dedupeMediaCandidates(directCandidates);
+        if (directCandidates.isEmpty()) {
+            return null;
+        }
+        String referer = javFilmsDirectReferer(pageUrl, pageText, directCandidates.get(0));
+        return new SiteMediaResult("javfilms", directCandidates.get(0), directCandidates, referer);
+    }
+
+    private boolean isJavFilmsDirectMedia(String rawUrl) {
+        String lowered = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        return lowered.contains("cc3001.dmm.co.jp")
+                && lowered.contains("/litevideo/freepv/")
+                && lowered.contains(".mp4");
+    }
+
+    private String javFilmsDirectReferer(String pageUrl, String pageText, String mediaUrl) {
+        if (!isJavFilmsDirectMedia(mediaUrl)) {
+            return pageUrl;
+        }
+        String videoId = extractJavFilmsDmmVideoId(pageUrl, pageText);
+        if (videoId.isEmpty()) {
+            return pageUrl;
+        }
+        return "https://video.dmm.co.jp/av/content/?id=" + urlEncode(videoId);
+    }
+
+    private String extractJavFilmsDmmVideoId(String pageUrl, String pageText) {
+        Matcher matcher = JAVFILMS_DMM_VIDEO_ID.matcher(pageText == null ? "" : pageText);
+        if (matcher.find()) {
+            return matcher.group(1).trim();
+        }
+        try {
+            String path = new URL(pageUrl).getPath();
+            String[] parts = path == null ? new String[0] : path.split("/");
+            for (int i = parts.length - 1; i >= 0; i--) {
+                String part = parts[i] == null ? "" : parts[i].trim();
+                if (!part.isEmpty()) {
+                    return part;
+                }
+            }
+        } catch (MalformedURLException ignored) {
+            // Fall through to no DMM referer.
+        }
+        return "";
+    }
+
+    private SiteMediaResult resolveMissAvMedia(String pageUrl, String pageText) throws IOException {
+        List<String> candidates = extractMissAvMediaCandidates(pageUrl, pageText);
+        String referer = pageUrl;
+        if (candidates.isEmpty()) {
+            for (String alternateUrl : missAvAlternatePageUrls(pageUrl)) {
+                if (alternateUrl.equals(pageUrl)) {
+                    continue;
+                }
+                try {
+                    String alternateText = readText(alternateUrl, originFromUrl(pageUrl) + "/");
+                    candidates = extractMissAvMediaCandidates(alternateUrl, alternateText);
+                    if (!candidates.isEmpty()) {
+                        referer = alternateUrl;
+                        break;
+                    }
+                } catch (IOException ignored) {
+                    // Try the next localized or dm mirror-style page.
+                }
+            }
+        }
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("missav", candidates.get(0), candidates, referer);
+    }
+
+    private List<String> extractMissAvMediaCandidates(String pageUrl, String pageText) {
+        List<String> manifests = new ArrayList<>();
+        List<String> direct = new ArrayList<>();
+        for (String candidate : extractMediaCandidates(pageText == null ? "" : pageText, pageUrl)) {
+            if (!isMediaUrl(candidate) || looksLikeImageUrl(candidate)) {
+                continue;
+            }
+            if (isHlsUrl(candidate) || isDashUrl(candidate)) {
+                addUnique(manifests, candidate);
+            } else {
+                addUnique(direct, candidate);
+            }
+        }
+        manifests = filterMissAvManifestCandidates(prioritizeManifestCandidates(dedupeMediaCandidates(manifests)));
+        direct = dedupeMediaCandidates(direct);
+        List<String> out = new ArrayList<>(manifests);
+        for (String candidate : direct) {
+            addUnique(out, candidate);
+        }
+        return out;
+    }
+
+    private List<String> filterMissAvManifestCandidates(List<String> candidates) {
+        Set<String> playlistPrefixes = new HashSet<>();
+        for (String candidate : candidates) {
+            String lowered = candidate == null ? "" : candidate.toLowerCase(Locale.US);
+            if (lowered.endsWith("/playlist.m3u8")) {
+                playlistPrefixes.add(lowered.substring(0, lowered.length() - "/playlist.m3u8".length()));
+            }
+        }
+        List<String> out = new ArrayList<>();
+        for (String candidate : candidates) {
+            String lowered = candidate == null ? "" : candidate.toLowerCase(Locale.US);
+            if (lowered.endsWith("/source/video.m3u8")) {
+                String prefix = lowered.substring(0, lowered.length() - "/source/video.m3u8".length());
+                if (playlistPrefixes.contains(prefix)) {
+                    continue;
+                }
+            }
+            addUnique(out, candidate);
+        }
+        return out;
+    }
+
+    private List<String> missAvAlternatePageUrls(String pageUrl) {
+        List<String> alternates = new ArrayList<>();
+        addUnique(alternates, pageUrl);
+        try {
+            URL parsed = new URL(pageUrl);
+            String root = parsed.getProtocol() + "://" + parsed.getHost();
+            String cleanPath = parsed.getPath() == null ? "" : parsed.getPath().replaceFirst("^/+", "");
+            if (cleanPath.isEmpty()) {
+                return alternates;
+            }
+            List<String> localized = new ArrayList<>();
+            Matcher dmMatcher = Pattern.compile("^dm\\d+/(.+)$", Pattern.CASE_INSENSITIVE).matcher(cleanPath);
+            String strippedDmPath = "";
+            if (dmMatcher.find() && !dmMatcher.group(1).trim().isEmpty()) {
+                strippedDmPath = dmMatcher.group(1).replaceFirst("^/+", "");
+                localized.add(strippedDmPath);
+            }
+            if (!Pattern.compile("^(?:en|ja|ko|zh)(?:/|$)", Pattern.CASE_INSENSITIVE).matcher(cleanPath).find()) {
+                localized.add("en/" + cleanPath);
+                if (!strippedDmPath.isEmpty()) {
+                    localized.add("en/" + strippedDmPath);
+                }
+            }
+            if (!Pattern.compile("^dm\\d+/", Pattern.CASE_INSENSITIVE).matcher(cleanPath).find()) {
+                for (String suffix : new String[]{"39", "85", "58", "55", "45", "43", "41", "31", "22"}) {
+                    localized.add("dm" + suffix + "/" + cleanPath);
+                }
+            }
+            for (String path : localized) {
+                addUnique(alternates, root + "/" + path);
+            }
+        } catch (MalformedURLException ignored) {
+            // Keep only the original page URL.
+        }
+        return alternates;
+    }
+
+    private SiteMediaResult resolve777TvMedia(String pageUrl, String pageText) throws IOException {
+        if (is777TvPlayPage(pageUrl)) {
+            return mediaFromMediaResolver("777tv", pageUrl, pageText, pageUrl);
+        }
+        if (!is777TvDetailPage(pageUrl)) {
+            return null;
+        }
+        SiteMediaResult pageMedia = mediaFromMediaResolver("777tv", pageUrl, pageText, "https://777tv.ai/");
+        if (pageMedia != null) {
+            return pageMedia;
+        }
+        for (String playUrl : extract777TvPlayCandidates(pageText)) {
+            if (cancelled.get()) {
+                return null;
+            }
+            try {
+                String playText = readText(playUrl, pageUrl);
+                SiteMediaResult playMedia = mediaFromMediaResolver("777tv", playUrl, playText, playUrl);
+                if (playMedia != null) {
+                    return playMedia;
+                }
+            } catch (IOException ignored) {
+                // Try the next episode/play-page candidate.
+            }
+        }
+        return null;
+    }
+
+    private boolean is777TvDetailPage(String pageUrl) {
+        try {
+            String path = new URL(pageUrl).getPath();
+            return TV777_DETAIL_PATH.matcher(path == null ? "" : path).find();
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private boolean is777TvPlayPage(String pageUrl) {
+        try {
+            String path = new URL(pageUrl).getPath();
+            return TV777_PLAY_PATH.matcher(path == null ? "" : path).find();
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private List<String> extract777TvPlayCandidates(String pageText) {
+        List<String> candidates = new ArrayList<>();
+        Matcher matcher = TV777_EPISODE_LINK.matcher(pageText == null ? "" : pageText);
+        while (matcher.find()) {
+            String raw = htmlDecoded(matcher.group(1)).trim();
+            String candidate = joinUrl("https://play.777tv.ai/", raw);
+            if (candidate.isEmpty()) {
+                continue;
+            }
+            try {
+                String host = new URL(candidate).getHost();
+                if (host != null && host.toLowerCase(Locale.US).contains("777tv.ai")) {
+                    addUnique(candidates, candidate);
+                }
+            } catch (MalformedURLException ignored) {
+                // Ignore malformed episode links.
+            }
+        }
+        return candidates;
+    }
+
+    private SiteMediaResult resolve99ItvMedia(String pageUrl, String pageText) throws IOException {
+        if (is99ItvPlayPage(pageUrl)) {
+            return mediaFromMediaResolver("99itv", pageUrl, pageText, pageUrl);
+        }
+        if (!is99ItvDetailPage(pageUrl)) {
+            return null;
+        }
+        SiteMediaResult pageMedia = mediaFromMediaResolver("99itv", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            return pageMedia;
+        }
+        for (String playUrl : extract99ItvPlayCandidates(pageUrl, pageText)) {
+            if (cancelled.get()) {
+                return null;
+            }
+            try {
+                String playText = readText(playUrl, pageUrl);
+                SiteMediaResult playMedia = mediaFromMediaResolver("99itv", playUrl, playText, playUrl);
+                if (playMedia != null) {
+                    return playMedia;
+                }
+            } catch (IOException ignored) {
+                // Try the next play-page candidate, mirroring the desktop resolver fallback flow.
+            }
+        }
+        return null;
+    }
+
+    private SiteMediaResult mediaFromMediaResolver(String sourceSite, String pageUrl, String pageText, String refererUrl) {
+        MediaResolver.Result resolved = MediaResolver.resolve(pageText == null ? "" : pageText, pageUrl);
+        if (resolved.primaryUrl == null || !resolved.primaryIsMedia) {
+            return null;
+        }
+        List<String> candidates = new ArrayList<>();
+        for (String candidate : resolved.candidates) {
+            if (isMediaUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult(sourceSite, candidates.get(0), candidates, refererUrl);
+    }
+
+    private boolean is99ItvDetailPage(String pageUrl) {
+        try {
+            String path = new URL(pageUrl).getPath();
+            return ITTV_DETAIL_PATH.matcher(path == null ? "" : path).find();
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private boolean is99ItvPlayPage(String pageUrl) {
+        try {
+            String path = new URL(pageUrl).getPath();
+            return ITTV_PLAY_PATH.matcher(path == null ? "" : path).find();
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private List<String> extract99ItvPlayCandidates(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        String text = pageText == null ? "" : pageText;
+        Matcher attrMatcher = ITTV_PLAY_ATTR.matcher(text);
+        while (attrMatcher.find()) {
+            add99ItvPlayCandidate(candidates, pageUrl, attrMatcher.group(1));
+        }
+        Matcher pathMatcher = ITTV_PLAY_PATH_TEXT.matcher(text);
+        while (pathMatcher.find()) {
+            add99ItvPlayCandidate(candidates, pageUrl, pathMatcher.group(0));
+        }
+        return candidates;
+    }
+
+    private void add99ItvPlayCandidate(List<String> candidates, String pageUrl, String rawCandidate) {
+        String candidate = joinUrl(pageUrl, htmlDecoded(rawCandidate).trim());
+        if (candidate.isEmpty()) {
+            return;
+        }
+        try {
+            String host = new URL(candidate).getHost();
+            if (host == null || !host.toLowerCase(Locale.US).contains("99itv.net")) {
+                return;
+            }
+        } catch (MalformedURLException ignored) {
+            return;
+        }
+        addUnique(candidates, candidate);
+    }
+
+    private SiteMediaResult resolveThanjuMedia(String pageUrl, String pageText) throws IOException {
+        if (!isThanjuPage(pageUrl)) {
+            return null;
+        }
+        if (pagePathContains(pageUrl, "/play/")) {
+            return mediaFromMediaResolver("thanju", pageUrl, pageText, pageUrl);
+        }
+        SiteMediaResult pageMedia = mediaFromMediaResolver("thanju", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            return pageMedia;
+        }
+        for (String playUrl : extractThanjuPlayCandidates(pageUrl, pageText)) {
+            if (cancelled.get()) {
+                return null;
+            }
+            try {
+                String playText = readText(playUrl, pageUrl);
+                SiteMediaResult playMedia = mediaFromMediaResolver("thanju", playUrl, playText, playUrl);
+                if (playMedia != null) {
+                    return playMedia;
+                }
+            } catch (IOException ignored) {
+                // Try the next play-page candidate.
+            }
+        }
+        return null;
+    }
+
+    private boolean isThanjuPage(String pageUrl) {
+        try {
+            String path = new URL(pageUrl).getPath();
+            return THANJU_PAGE_PATH.matcher(path == null ? "" : path).find();
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private List<String> extractThanjuPlayCandidates(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        Matcher matcher = THANJU_PLAY_LINK.matcher(pageText == null ? "" : pageText);
+        while (matcher.find()) {
+            String candidate = joinUrl(pageUrl, htmlDecoded(matcher.group(1)).trim());
+            if (candidate.isEmpty()) {
+                continue;
+            }
+            try {
+                String host = new URL(candidate).getHost();
+                if (host != null && host.toLowerCase(Locale.US).contains("thanju.com")) {
+                    addUnique(candidates, candidate);
+                }
+            } catch (MalformedURLException ignored) {
+                // Ignore malformed play links.
+            }
+        }
+        return candidates;
     }
 
     private List<String> decodeBestJavPornPlayerSources(String playerText, String playerUrl) {
@@ -3005,6 +3607,7 @@ final class DownloadEngine {
     private List<String> extractMediaCandidates(String pageText, String pageUrl) {
         List<String> candidates = new ArrayList<>();
         addRegexCandidates(candidates, ABSOLUTE_MEDIA_URL.matcher(pageText), pageUrl, false);
+        addRegexCandidates(candidates, ESCAPED_MEDIA_URL.matcher(pageText), pageUrl, false);
         addRegexCandidates(candidates, ATTR_MEDIA_URL.matcher(pageText), pageUrl, true);
         return candidates;
     }

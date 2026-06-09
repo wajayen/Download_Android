@@ -62,7 +62,7 @@ final class MediaResolver {
             "<iframe[^>]+(?:src|data-src)=[\"']([^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern PLAYER_OBJECT_START = Pattern.compile(
-            "(?:var\\s+)?(player_data|player_aaaa|player)\\s*=\\s*\\{",
+            "(?:var\\s+)?(cms_player|player_data|player_aaaa|player)\\s*=\\s*\\{",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern SITE_PLAY_LINK = Pattern.compile(
             "<a([^>]+)href=[\"']([^\"']*(?:/(?:vod)?play/|/vodplay/|/watch/|/video/|/videos/|/embed/|/amateurjav_content/|/eps/|/episode/|/vod/detail/|/voddetail/|/voddetail2/|/detail/|/title/|/drama/|/index\\.php/vod/(?:play|detail)/|/dianying/|/dianshiju/|/zongyi/|/dongman/)[^\"']+)[\"']([^>]*)>(.*?)</a>",
@@ -1561,7 +1561,7 @@ final class MediaResolver {
         if (lowered.contains("njavtv")) return "njavtv";
         if (lowered.contains("njav")) return "njav";
         if (lowered.contains("supjav")) return "supjav";
-        if (lowered.contains("hanime1")) return "hanime1";
+        if (lowered.contains("hanime1") || lowered.contains("hanimeone")) return "hanime1";
         if (lowered.contains("18jav")) return "18jav";
         if (lowered.contains("18av")) return "18av";
         if (lowered.contains("85xvideo")) return "85xvideo";
@@ -1575,6 +1575,7 @@ final class MediaResolver {
         if (lowered.contains("hohoj")) return "hohoj";
         if (lowered.contains("ggjav")) return "ggjav";
         if (lowered.contains("tktube")) return "tktube";
+        if (lowered.contains("ppp.porn")) return "ppp.porn";
         return "";
     }
 
@@ -1608,7 +1609,8 @@ final class MediaResolver {
                 || "goodav17".equals(site)
                 || "hohoj".equals(site)
                 || "ggjav".equals(site)
-                || "tktube".equals(site);
+                || "tktube".equals(site)
+                || "ppp.porn".equals(site);
     }
 
     private static boolean isMacCmsLikeSite(String site) {

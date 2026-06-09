@@ -48,7 +48,8 @@ $VersionCodeMatch = Select-String -Path $AppBuildFile -Pattern 'versionCode\s+(\
 if ($VersionCodeMatch -and $VersionCodeMatch.Matches.Count -gt 0) {
     $VersionCode = [int]$VersionCodeMatch.Matches[0].Groups[1].Value
 }
-$DistApk = Join-Path $Dist "downloader-android-$VersionName-debug.apk"
+$VersionSuffix = if ($VersionCode -gt 0) { "{0:D4}" -f $VersionCode } else { $VersionName }
+$DistApk = Join-Path $Dist "downloader-android-$VersionSuffix.apk"
 Copy-Item $ApkPath $DistApk -Force
 
 Write-Host "APK built: $ApkPath"

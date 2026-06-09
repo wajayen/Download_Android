@@ -2,7 +2,7 @@
 
 `Download_Android` 是 Windows 版「下載者」的 Android 原生移植專案。目標是在手機上提供接近桌面版的影片搜尋、解析、下載、續傳、播放與診斷能力，同時維持 Android 友善的操作方式。
 
-目前 Android 版本：`0.150.0`（`versionCode 150`）。
+目前 Android 版本：`0.160.0`（`versionCode 160`）。
 
 ## App 特色
 
@@ -32,6 +32,16 @@
 - v0.148.0: TinyAVideo 影片頁新增 Windows 版同源的媒體 URL 候選抽取，讓番號搜尋命中頁面後可直接取得 HLS/MP4 候選。
 - v0.149.0: SupJAV 影片頁新增 Windows 版同源的播放 server 追蹤，會由 `btn-server`/`data-link` 進入 supremejav player 與 child page 抽取 HLS/MP4 候選。
 - v0.150.0: 搜尋影片名稱或番號時不再自動下載第一個結果，改為先列出縮圖、檔名/番號、站台名稱，由使用者選擇要下載的網址。
+- v0.151.0: Evoload 外部播放頁新增 Windows 版同源的 `redirect_link` 追蹤、停放網域檢查與 HLS/DASH/MP4 候選抽取。
+- v0.152.0: TKTube 影片頁新增 Windows 版同源的 `/get_file/` MP4 候選抽取、預覽圖過濾與高畫質排序，並補強 escaped media URL 掃描。
+- v0.153.0: 18JAV 影片頁新增 Windows 版同源的媒體候選抽取，會過濾已知 preview/screenshot 來源後再選擇 HLS/DASH/MP4。
+- v0.154.0: Hanime1/HanimeOne watch 頁與 PPP.Porn 影片頁新增 Windows 版同源的媒體候選抽取，並保留正確來源頁 Referer。
+- v0.155.0: JAVFilms 影片頁新增 Windows 版同源的串流優先候選抽取，並在沒有 HLS/DASH 時使用 DMM free preview MP4 fallback。
+- v0.156.0: MissAV 影片頁新增 Windows 版同源的 manifest/direct-media 抽取、`playlist.m3u8` 去重，以及 `en/`、`dmXX/` alternate path 重試。
+- v0.157.0: 99iTV 詳情頁/播放頁新增 Windows 版同源的 detail-to-play-page 追蹤，並復用 MacCMS `player_data` 解碼來取得實際 HLS/MP4 候選。
+- v0.158.0: 777TV 詳情頁新增 Windows 版同源的 episode/play-page 追蹤，播放頁會先解析 `player_data`/HLS 候選後再交給下載器。
+- v0.159.0: 修正搜尋結果列表，移除站內搜尋頁 fallback 混入列表的情況，並補強影片候選的檔名/番號標題與縮圖抽取、縮圖 Referer 載入。
+- v0.160.0: Thanju 詳情頁/播放頁新增 Windows 版同源的 detail-to-play-page 追蹤，並補上 `cms_player` MacCMS 物件解析以取得實際 HLS/MP4 候選。
 ## 下載功能
 
 - 支援直接貼上或分享影片網址到 App。

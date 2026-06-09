@@ -645,7 +645,7 @@ public final class MainActivity extends Activity {
             }
             queueSelectedSearchResult(result, fileName, playAfterThreshold);
         });
-        loadThumbnail(thumbnail, result.thumbnailUrl);
+        loadThumbnail(thumbnail, result.thumbnailUrl, result.refererUrl);
         return row;
     }
 
@@ -691,11 +691,12 @@ public final class MainActivity extends Activity {
         return getString(R.string.search_result_site_unknown);
     }
 
-    private void loadThumbnail(ImageView target, String rawUrl) {
+    private void loadThumbnail(ImageView target, String rawUrl, String refererUrl) {
         String url = rawUrl == null ? "" : rawUrl.trim();
         if (url.isEmpty()) {
             return;
         }
+        String referer = refererUrl == null ? "" : refererUrl.trim();
         new Thread(() -> {
             HttpURLConnection connection = null;
             try {
@@ -704,6 +705,9 @@ public final class MainActivity extends Activity {
                 connection.setReadTimeout(9000);
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36");
                 connection.setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
+                if (!referer.isEmpty()) {
+                    connection.setRequestProperty("Referer", referer);
+                }
                 try (InputStream input = connection.getInputStream()) {
                     Bitmap bitmap = BitmapFactory.decodeStream(input);
                     if (bitmap != null) {
