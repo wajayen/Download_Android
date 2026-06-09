@@ -239,7 +239,8 @@ final class MediaResolver {
         if (lowered.contains("facebook.com") || lowered.contains("fb.watch")) {
             return "facebook";
         }
-        if (lowered.contains("twitter.com") || lowered.contains("x.com")) {
+        if (lowered.contains("twitter.com") || lowered.contains("x.com")
+                || lowered.contains("vxtwitter.com") || lowered.contains("fxtwitter.com")) {
             return "twitter";
         }
         String adultSite = adultSourceSite(lowered);

@@ -28,6 +28,7 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.URL;
+import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -37,6 +38,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -123,6 +125,48 @@ final class DownloadEngine {
     private static final Pattern THANJU_PLAY_LINK = Pattern.compile(
             "href=[\"']([^\"']*/play/\\d+/\\d+-\\d+\\.html)[\"']",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern OLEVOD_DETAIL_PATH = Pattern.compile("/index\\.php/vod/detail/id/\\d+\\.html$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern OLEVOD_PLAY_PATH = Pattern.compile("/index\\.php/vod/play/id/\\d+/sid/\\d+/nid/\\d+\\.html$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern OLEVOD_PLAY_LINK = Pattern.compile(
+            "href=[\"']([^\"']*/index\\.php/vod/play/id/\\d+/sid/\\d+/nid/\\d+\\.html)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern DRAMASQ_DETAIL_PATH = Pattern.compile("/detail/\\d+\\.html$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DRAMASQ_PLAY_PATH = Pattern.compile("/vodplay/(\\d+)/(ep\\d+)\\.html$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DRAMASQ_PLAY_LINK = Pattern.compile(
+            "href=[\"']([^\"']*/vodplay/\\d+/ep\\d+\\.html)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern THREEKOR_LIST_PATH = Pattern.compile("/list/\\d+[^/]*\\.html$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern THREEKOR_DETAIL_PATH = Pattern.compile("/detail/\\d+\\.html$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern THREEKOR_DETAIL_LINK = Pattern.compile(
+            "href=[\"']((?:https?:)?//3kor\\.com/detail/\\d+\\.html|/detail/\\d+\\.html)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern THREEKOR_PLAY_ENTRY = Pattern.compile(
+            "bb_a\\(['\"]([^'\"]+)['\"]\\s*,\\s*['\"]([^'\"]*)['\"]\\s*,\\s*event\\)",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern NNYY_PAGE_PATH = Pattern.compile("/(?:dianying|dianshiju|zongyi|dongman)/(\\d+)\\.html$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern NNYY_DEFAULT_EP = Pattern.compile("on_ep\\(['\"]([^'\"]+)['\"]\\)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern NNYY_EP_SLUG_TAG = Pattern.compile(
+            "<([a-z0-9]+)\\b[^>]*\\bep_slug=['\"]([^'\"]+)['\"][^>]*>.*?</\\1>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern NNYY_EP_SLUG_ATTR = Pattern.compile(
+            "\\bep_slug=['\"]([^'\"]+)['\"]",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern IKANBOT_PLAY_PATH = Pattern.compile("/play/\\d+", Pattern.CASE_INSENSITIVE);
+    private static final Pattern IKANBOT_WINDOW_TOKEN = Pattern.compile("window\\.v_tks\\s*=\\s*['\"]([^'\"]*)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern IKANBOT_URL_FIELD = Pattern.compile(
+            "(?:url|src|playurl|playUrl)\\s*[:=]\\s*[\"']([^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern YFSP_PLAY_PATH = Pattern.compile("/play/([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TWITTER_STATUS_PATH = Pattern.compile("/([^/?#]+)/status/(\\d+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern INSTAGRAM_SHORTCODE_PATH = Pattern.compile("/(?:reel|p)/([^/?#]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern FACEBOOK_VIDEO_PATH = Pattern.compile("/(?:reel|watch|videos)(?:/|\\b)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern FACEBOOK_LSD_FIELD = Pattern.compile("\"lsd\"\\s*:\\s*\\{\"name\":\"lsd\",\"value\":\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
+    private static final Pattern FACEBOOK_REELS_QUERY = Pattern.compile(
+            "FBReelsRootWithEntrypointQueryRelayPreloader_[^\"]+\",\"queryID\":\"(\\d+)\",\"variables\":(\\{.*?\\}),\"queryName\":\"FBReelsRootWithEntrypointQuery\"",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern DAILYMOTION_VIDEO_PATH = Pattern.compile(
+            "(?:/video/|/embed/video/|^/)([A-Za-z0-9]+)",
+            Pattern.CASE_INSENSITIVE);
     private static final int SEGMENT_RETRY_LIMIT = 3;
     private static final int PAGE_RESOLVE_DEPTH_LIMIT = 4;
     private static final int MAX_DASH_DURATION_SEGMENTS = 2000;
@@ -152,6 +196,28 @@ final class DownloadEngine {
             this.primaryUrl = primaryUrl;
             this.candidates = candidates;
             this.refererUrl = refererUrl;
+        }
+    }
+
+    private static final class TwitterStatus {
+        final String screenName;
+        final String statusId;
+
+        TwitterStatus(String screenName, String statusId) {
+            this.screenName = screenName;
+            this.statusId = statusId;
+        }
+    }
+
+    private static final class FacebookGraphqlPayload {
+        final String lsd;
+        final String docId;
+        final String variables;
+
+        FacebookGraphqlPayload(String lsd, String docId, String variables) {
+            this.lsd = lsd;
+            this.docId = docId;
+            this.variables = variables;
         }
     }
 
@@ -889,6 +955,36 @@ final class DownloadEngine {
         }
         if ("thanju".equals(site)) {
             return resolveThanjuMedia(pageUrl, pageText);
+        }
+        if ("olevod".equals(site)) {
+            return resolveOlevodMedia(pageUrl, pageText);
+        }
+        if ("dramasq".equals(site)) {
+            return resolveDramaSqMedia(pageUrl, pageText);
+        }
+        if ("3kor".equals(site)) {
+            return resolve3KorMedia(pageUrl, pageText);
+        }
+        if ("nnyy".equals(site)) {
+            return resolveNnyyMedia(pageUrl, pageText);
+        }
+        if ("ikanbot".equals(site)) {
+            return resolveIkanbotMedia(pageUrl, pageText);
+        }
+        if ("yfsp".equals(site)) {
+            return resolveYfspMedia(pageUrl, pageText);
+        }
+        if ("twitter".equals(site)) {
+            return resolveTwitterMedia(pageUrl, pageText);
+        }
+        if ("instagram".equals(site)) {
+            return resolveInstagramMedia(pageUrl, pageText);
+        }
+        if ("facebook".equals(site)) {
+            return resolveFacebookMedia(pageUrl, pageText);
+        }
+        if ("dailymotion".equals(site)) {
+            return resolveDailymotionMedia(pageUrl, pageText);
         }
         return null;
     }
@@ -1738,6 +1834,800 @@ final class DownloadEngine {
         return candidates;
     }
 
+    private SiteMediaResult resolveOlevodMedia(String pageUrl, String pageText) throws IOException {
+        if (isOlevodPlayPage(pageUrl)) {
+            return mediaFromMediaResolver("olevod", pageUrl, pageText, pageUrl);
+        }
+        if (!isOlevodDetailPage(pageUrl)) {
+            return null;
+        }
+        SiteMediaResult pageMedia = mediaFromMediaResolver("olevod", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            return pageMedia;
+        }
+        for (String playUrl : extractOlevodPlayCandidates(pageUrl, pageText)) {
+            if (cancelled.get()) {
+                return null;
+            }
+            try {
+                String playText = readText(playUrl, pageUrl);
+                SiteMediaResult playMedia = mediaFromMediaResolver("olevod", playUrl, playText, playUrl);
+                if (playMedia != null) {
+                    return playMedia;
+                }
+            } catch (IOException ignored) {
+                // Try the next play-page candidate.
+            }
+        }
+        return null;
+    }
+
+    private boolean isOlevodDetailPage(String pageUrl) {
+        try {
+            String path = new URL(pageUrl).getPath();
+            return OLEVOD_DETAIL_PATH.matcher(path == null ? "" : path).find();
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private boolean isOlevodPlayPage(String pageUrl) {
+        try {
+            String path = new URL(pageUrl).getPath();
+            return OLEVOD_PLAY_PATH.matcher(path == null ? "" : path).find();
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private List<String> extractOlevodPlayCandidates(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        Matcher matcher = OLEVOD_PLAY_LINK.matcher(pageText == null ? "" : pageText);
+        while (matcher.find()) {
+            String candidate = joinUrl(pageUrl, htmlDecoded(matcher.group(1)).trim());
+            if (candidate.isEmpty()) {
+                continue;
+            }
+            try {
+                String host = new URL(candidate).getHost();
+                String loweredHost = host == null ? "" : host.toLowerCase(Locale.US);
+                if (loweredHost.contains("olevod") || loweredHost.contains("olehdtv")) {
+                    addUnique(candidates, candidate);
+                }
+            } catch (MalformedURLException ignored) {
+                // Ignore malformed play links.
+            }
+        }
+        return candidates;
+    }
+
+    private SiteMediaResult resolveDramaSqMedia(String pageUrl, String pageText) throws IOException {
+        Matcher playMatcher = dramasqPlayMatcher(pageUrl);
+        if (playMatcher.find()) {
+            String apiUrl = "https://dramasq.io/drq/" + playMatcher.group(1) + "/" + playMatcher.group(2);
+            List<String> candidates = new ArrayList<>();
+            try {
+                candidates.addAll(extractDramaSqApiCandidates(readText(apiUrl, pageUrl), apiUrl));
+            } catch (IOException ignored) {
+                // Fall back to media candidates embedded in the play page.
+            }
+            candidates.addAll(extractMediaCandidates(pageText == null ? "" : pageText, pageUrl));
+            candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+            if (candidates.isEmpty()) {
+                return null;
+            }
+            return new SiteMediaResult("dramasq", candidates.get(0), candidates, pageUrl);
+        }
+        if (!isDramaSqDetailPage(pageUrl)) {
+            return null;
+        }
+        for (String playUrl : extractDramaSqPlayCandidates(pageUrl, pageText)) {
+            if (cancelled.get()) {
+                return null;
+            }
+            try {
+                String playText = readText(playUrl, pageUrl);
+                SiteMediaResult playMedia = resolveDramaSqMedia(playUrl, playText);
+                if (playMedia != null) {
+                    return playMedia;
+                }
+            } catch (IOException ignored) {
+                // Try the next episode/play-page candidate.
+            }
+        }
+        return null;
+    }
+
+    private Matcher dramasqPlayMatcher(String pageUrl) {
+        String path = "";
+        try {
+            path = new URL(pageUrl).getPath();
+        } catch (MalformedURLException ignored) {
+            // Return a matcher that will not match.
+        }
+        return DRAMASQ_PLAY_PATH.matcher(path == null ? "" : path);
+    }
+
+    private boolean isDramaSqDetailPage(String pageUrl) {
+        try {
+            String path = new URL(pageUrl).getPath();
+            return DRAMASQ_DETAIL_PATH.matcher(path == null ? "" : path).find();
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private List<String> extractDramaSqPlayCandidates(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        Matcher matcher = DRAMASQ_PLAY_LINK.matcher(pageText == null ? "" : pageText);
+        while (matcher.find()) {
+            String candidate = joinUrl(pageUrl, htmlDecoded(matcher.group(1)).trim());
+            if (candidate.isEmpty()) {
+                continue;
+            }
+            try {
+                String host = new URL(candidate).getHost();
+                if (host != null && host.toLowerCase(Locale.US).contains("dramasq")) {
+                    addUnique(candidates, candidate);
+                }
+            } catch (MalformedURLException ignored) {
+                // Ignore malformed play links.
+            }
+        }
+        return candidates;
+    }
+
+    private List<String> extractDramaSqApiCandidates(String apiText, String apiUrl) {
+        List<String> candidates = new ArrayList<>();
+        try {
+            JSONObject payload = parseJsonObject(apiText);
+            JSONArray plays = payload == null ? null : payload.optJSONArray("video_plays");
+            if (plays != null) {
+                for (int i = 0; i < plays.length(); i++) {
+                    JSONObject entry = plays.optJSONObject(i);
+                    if (entry == null) {
+                        continue;
+                    }
+                    for (String key : new String[]{"play_data", "v_data", "url", "play_url", "src"}) {
+                        String candidate = joinUrl(apiUrl, entry.optString(key, ""));
+                        if (isMediaUrl(candidate)) {
+                            addUnique(candidates, candidate);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Keep regex fallback alive for API shape changes.
+        }
+        candidates.addAll(extractMediaCandidates(apiText == null ? "" : apiText, apiUrl));
+        return prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+    }
+
+    private SiteMediaResult resolve3KorMedia(String pageUrl, String pageText) throws IOException {
+        if (is3KorListPage(pageUrl)) {
+            for (String detailUrl : extract3KorDetailCandidates(pageUrl, pageText)) {
+                if (cancelled.get()) {
+                    return null;
+                }
+                try {
+                    String detailText = readText(detailUrl, pageUrl);
+                    SiteMediaResult detailMedia = resolve3KorMedia(detailUrl, detailText);
+                    if (detailMedia != null) {
+                        return detailMedia;
+                    }
+                } catch (IOException ignored) {
+                    // Try the next detail candidate.
+                }
+            }
+            return null;
+        }
+        if (!is3KorDetailPage(pageUrl)) {
+            return null;
+        }
+        String detailUrl = stripQueryAndFragment(pageUrl);
+        List<String> playIds = extract3KorPlayIds(pageText);
+        if (playIds.isEmpty()) {
+            return mediaFromMediaResolver("3kor", pageUrl, pageText, detailUrl);
+        }
+        String requestedPlayId = queryParameter(pageUrl, "play");
+        String selectedPlayId = playIds.contains(requestedPlayId) ? requestedPlayId : playIds.get(0);
+        String apiUrl = "https://3kor.com/u/u1.php?ud=" + urlEncode(selectedPlayId);
+        String encryptedText = readText(apiUrl, detailUrl).trim();
+        String directStream = decrypt3KorStreamUrl(encryptedText);
+        if (directStream.isEmpty()) {
+            return null;
+        }
+        String streamUrl = "https://3kor.com/m3/edit-down.php?url=" + urlEncode(directStream);
+        List<String> candidates = new ArrayList<>();
+        addUnique(candidates, streamUrl);
+        for (String playId : playIds) {
+            if (!playId.equals(selectedPlayId)) {
+                addUnique(candidates, detailUrl + "?play=" + urlEncode(playId));
+            }
+        }
+        return new SiteMediaResult("3kor", streamUrl, candidates, detailUrl);
+    }
+
+    private boolean is3KorListPage(String pageUrl) {
+        try {
+            String path = new URL(pageUrl).getPath();
+            return THREEKOR_LIST_PATH.matcher(path == null ? "" : path).find();
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private boolean is3KorDetailPage(String pageUrl) {
+        try {
+            String path = new URL(pageUrl).getPath();
+            return THREEKOR_DETAIL_PATH.matcher(path == null ? "" : path).find();
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private List<String> extract3KorDetailCandidates(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        Matcher matcher = THREEKOR_DETAIL_LINK.matcher(pageText == null ? "" : pageText);
+        while (matcher.find()) {
+            String candidate = joinUrl(pageUrl, htmlDecoded(matcher.group(1)).trim());
+            if (!candidate.isEmpty()) {
+                addUnique(candidates, candidate);
+            }
+        }
+        return candidates;
+    }
+
+    private List<String> extract3KorPlayIds(String pageText) {
+        List<String> ids = new ArrayList<>();
+        Matcher matcher = THREEKOR_PLAY_ENTRY.matcher(pageText == null ? "" : pageText);
+        while (matcher.find()) {
+            addUnique(ids, htmlDecoded(matcher.group(1)).trim());
+        }
+        return ids;
+    }
+
+    private String decrypt3KorStreamUrl(String encryptedText) throws IOException {
+        try {
+            byte[] encryptedBytes = Base64.decode(encryptedText == null ? "" : encryptedText.trim(), Base64.DEFAULT);
+            if (encryptedBytes.length <= 16) {
+                throw new IOException("3KOR encrypted stream invalid");
+            }
+            byte[] key = Arrays.copyOf("my-to-newhan-2025".getBytes(StandardCharsets.UTF_8), 32);
+            byte[] iv = Arrays.copyOfRange(encryptedBytes, 0, 16);
+            byte[] ciphertext = Arrays.copyOfRange(encryptedBytes, 16, encryptedBytes.length);
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"), new IvParameterSpec(iv));
+            String streamUrl = new String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8).trim();
+            return isMediaUrl(streamUrl) ? streamUrl : "";
+        } catch (GeneralSecurityException | IllegalArgumentException error) {
+            throw new IOException("3KOR decrypt failed", error);
+        }
+    }
+
+    private String stripQueryAndFragment(String rawUrl) {
+        try {
+            URL parsed = new URL(rawUrl);
+            return parsed.getProtocol() + "://" + parsed.getHost() + parsed.getPath();
+        } catch (MalformedURLException ignored) {
+            return rawUrl == null ? "" : rawUrl;
+        }
+    }
+
+    private String queryParameter(String rawUrl, String name) {
+        Uri uri = Uri.parse(rawUrl == null ? "" : rawUrl);
+        String value = uri.getQueryParameter(name);
+        return value == null ? "" : value.trim();
+    }
+
+    private SiteMediaResult resolveNnyyMedia(String pageUrl, String pageText) throws IOException {
+        String pageId = nnyyPageId(pageUrl);
+        if (pageId.isEmpty()) {
+            return null;
+        }
+        List<String> slugs = extractNnyyEpisodeSlugs(pageText);
+        String selectedSlug = queryParameter(pageUrl, "ep");
+        if (selectedSlug.isEmpty()) {
+            selectedSlug = extractNnyyDefaultEpisodeSlug(pageText);
+        }
+        if (selectedSlug.isEmpty() && !slugs.isEmpty()) {
+            selectedSlug = slugs.get(0);
+        }
+        if (selectedSlug.isEmpty()) {
+            return null;
+        }
+        String apiUrl = "https://nnyy.in/_gp/" + pageId + "/" + selectedSlug;
+        List<String> candidates = extractNnyyApiCandidates(readText(apiUrl, pageUrl), apiUrl);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        for (String slug : slugs) {
+            if (!slug.equals(selectedSlug)) {
+                addUnique(candidates, stripQueryAndFragment(pageUrl) + "?ep=" + urlEncode(slug));
+            }
+        }
+        return new SiteMediaResult("nnyy", candidates.get(0), candidates, pageUrl);
+    }
+
+    private String nnyyPageId(String pageUrl) {
+        try {
+            String path = new URL(pageUrl).getPath();
+            Matcher matcher = NNYY_PAGE_PATH.matcher(path == null ? "" : path);
+            return matcher.find() ? matcher.group(1) : "";
+        } catch (MalformedURLException ignored) {
+            return "";
+        }
+    }
+
+    private String extractNnyyDefaultEpisodeSlug(String pageText) {
+        Matcher matcher = NNYY_DEFAULT_EP.matcher(pageText == null ? "" : pageText);
+        return matcher.find() ? htmlDecoded(matcher.group(1)).trim() : "";
+    }
+
+    private List<String> extractNnyyEpisodeSlugs(String pageText) {
+        List<String> slugs = new ArrayList<>();
+        String text = pageText == null ? "" : pageText;
+        Matcher tagMatcher = NNYY_EP_SLUG_TAG.matcher(text);
+        while (tagMatcher.find()) {
+            addUnique(slugs, htmlDecoded(tagMatcher.group(2)).trim());
+        }
+        Matcher attrMatcher = NNYY_EP_SLUG_ATTR.matcher(text);
+        while (attrMatcher.find()) {
+            addUnique(slugs, htmlDecoded(attrMatcher.group(1)).trim());
+        }
+        return slugs;
+    }
+
+    private List<String> extractNnyyApiCandidates(String apiText, String apiUrl) {
+        List<String> candidates = new ArrayList<>();
+        try {
+            JSONObject payload = parseJsonObject(apiText);
+            JSONArray plays = payload == null ? null : payload.optJSONArray("video_plays");
+            if (plays != null) {
+                for (int i = 0; i < plays.length(); i++) {
+                    JSONObject row = plays.optJSONObject(i);
+                    if (row == null) {
+                        continue;
+                    }
+                    String candidate = joinUrl(apiUrl, row.optString("play_data", ""));
+                    if (isMediaUrl(candidate)) {
+                        addUnique(candidates, candidate);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Keep regex fallback alive for API shape changes.
+        }
+        candidates.addAll(extractMediaCandidates(apiText == null ? "" : apiText, apiUrl));
+        return prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+    }
+
+    private SiteMediaResult resolveIkanbotMedia(String pageUrl, String pageText) throws IOException {
+        if (!isIkanbotPlayPage(pageUrl)) {
+            return mediaFromMediaResolver("ikanbot", pageUrl, pageText, pageUrl);
+        }
+        String origin = firstNonEmpty(originFromUrl(pageUrl), "https://www1.ikanbot.com");
+        List<String> candidates = new ArrayList<>(extractIkanbotMediaCandidates(pageText, pageUrl));
+        String videoId = extractIkanbotHiddenValue(pageText, "current_id");
+        String mtype = firstNonEmpty(extractIkanbotHiddenValue(pageText, "mtype"), "0");
+        if (!videoId.isEmpty()) {
+            List<String> tokenCandidates = ikanbotTokenCandidates(pageText, videoId);
+            Map<String, String> headers = new LinkedHashMap<>();
+            headers.put("Accept", "application/json, text/javascript, */*; q=0.01");
+            headers.put("X-Requested-With", "XMLHttpRequest");
+            headers.put("Sec-Fetch-Site", "same-origin");
+            headers.put("Sec-Fetch-Mode", "cors");
+            headers.put("Sec-Fetch-Dest", "empty");
+            for (String token : tokenCandidates) {
+                String apiUrl = origin + "/api/getResN?videoId=" + urlEncode(videoId)
+                        + "&mtype=" + urlEncode(mtype)
+                        + "&token=" + urlEncode(token);
+                try {
+                    candidates.addAll(extractIkanbotMediaCandidates(readText(apiUrl, pageUrl, headers), pageUrl));
+                } catch (IOException ignored) {
+                    // Try the next token form; Ikanbot changes accepted token shapes over time.
+                }
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return mediaFromMediaResolver("ikanbot", pageUrl, pageText, pageUrl);
+        }
+        return new SiteMediaResult("ikanbot", candidates.get(0), candidates, pageUrl);
+    }
+
+    private boolean isIkanbotPlayPage(String pageUrl) {
+        try {
+            String host = new URL(pageUrl).getHost();
+            String path = new URL(pageUrl).getPath();
+            return host != null && host.toLowerCase(Locale.US).contains("ikanbot")
+                    && IKANBOT_PLAY_PATH.matcher(path == null ? "" : path).find();
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private String extractIkanbotHiddenValue(String pageText, String fieldId) {
+        String field = Pattern.quote(fieldId == null ? "" : fieldId);
+        Pattern[] patterns = new Pattern[]{
+                Pattern.compile("id=[\"']" + field + "[\"'][^>]*value=[\"']([^\"']*)", Pattern.CASE_INSENSITIVE | Pattern.DOTALL),
+                Pattern.compile("value=[\"']([^\"']*)[\"'][^>]*id=[\"']" + field + "[\"']", Pattern.CASE_INSENSITIVE | Pattern.DOTALL)
+        };
+        for (Pattern pattern : patterns) {
+            Matcher matcher = pattern.matcher(pageText == null ? "" : pageText);
+            if (matcher.find()) {
+                return htmlDecoded(matcher.group(1)).trim();
+            }
+        }
+        return "";
+    }
+
+    private List<String> ikanbotTokenCandidates(String pageText, String videoId) {
+        List<String> tokens = new ArrayList<>();
+        Matcher windowMatcher = IKANBOT_WINDOW_TOKEN.matcher(pageText == null ? "" : pageText);
+        if (windowMatcher.find()) {
+            addUnique(tokens, htmlDecoded(windowMatcher.group(1)).trim());
+        }
+        String eToken = extractIkanbotHiddenValue(pageText, "e_token");
+        String derived = deriveIkanbotApiToken(videoId, eToken);
+        addUnique(tokens, derived);
+        addUnique(tokens, "");
+        addUnique(tokens, eToken);
+        if (eToken.startsWith("wa") && eToken.contains("ve")) {
+            addUnique(tokens, eToken.substring(2));
+            if (eToken.length() > 4) {
+                addUnique(tokens, eToken.substring(2, eToken.length() - 2));
+            }
+            if (eToken.length() >= 34) {
+                addUnique(tokens, eToken.substring(2, 34));
+            }
+        }
+        return tokens;
+    }
+
+    private String deriveIkanbotApiToken(String videoId, String eToken) {
+        String digits = videoId == null ? "" : videoId.replaceAll("\\D+", "");
+        String remaining = eToken == null ? "" : eToken.trim();
+        if (digits.isEmpty() || remaining.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        String tail = digits.length() > 4 ? digits.substring(digits.length() - 4) : digits;
+        for (int i = 0; i < tail.length(); i++) {
+            int offset = (tail.charAt(i) - '0') % 3 + 1;
+            if (remaining.length() < offset + 8) {
+                return "";
+            }
+            builder.append(remaining, offset, offset + 8);
+            remaining = remaining.substring(offset + 8);
+        }
+        return builder.toString().trim();
+    }
+
+    private List<String> extractIkanbotMediaCandidates(String value, String baseUrl) {
+        List<String> candidates = new ArrayList<>(extractMediaCandidates(value == null ? "" : value, baseUrl));
+        Matcher fieldMatcher = IKANBOT_URL_FIELD.matcher(value == null ? "" : value);
+        while (fieldMatcher.find()) {
+            String candidate = joinUrl(baseUrl, htmlDecoded(fieldMatcher.group(1)).replace("\\/", "/").trim());
+            if (isMediaUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        String text = value == null ? "" : value.trim();
+        if (text.length() < 200000 && (text.startsWith("{") || text.startsWith("["))) {
+            try {
+                if (text.startsWith("{")) {
+                    collectIkanbotJsonCandidates(new JSONObject(text), baseUrl, candidates);
+                } else {
+                    collectIkanbotJsonCandidates(new JSONArray(text), baseUrl, candidates);
+                }
+            } catch (Exception ignored) {
+                // Keep regex candidates when the response is JavaScript-like rather than strict JSON.
+            }
+        }
+        return prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+    }
+
+    private void collectIkanbotJsonCandidates(Object node, String baseUrl, List<String> candidates) {
+        if (node instanceof JSONObject) {
+            JSONObject object = (JSONObject) node;
+            Iterator<String> keys = object.keys();
+            while (keys.hasNext()) {
+                collectIkanbotJsonCandidates(object.opt(keys.next()), baseUrl, candidates);
+            }
+            return;
+        }
+        if (node instanceof JSONArray) {
+            JSONArray array = (JSONArray) node;
+            for (int i = 0; i < array.length(); i++) {
+                collectIkanbotJsonCandidates(array.opt(i), baseUrl, candidates);
+            }
+            return;
+        }
+        if (node instanceof String) {
+            candidates.addAll(extractIkanbotMediaCandidates((String) node, baseUrl));
+        }
+    }
+
+    private SiteMediaResult resolveYfspMedia(String pageUrl, String pageText) {
+        String playKey = extractYfspPlayKey(pageUrl);
+        List<String> candidates = new ArrayList<>();
+        if (!playKey.isEmpty()) {
+            addUnique(candidates, "https://upload.yfsp.tv/api/video/MasterPlayList?id=" + urlEncode(playKey));
+            addUnique(candidates, "https://upload.yfsp.tv/api/video/MasterPlayList?id=" + playKey);
+            addUnique(candidates, "https://upload.yfsp.tv/api/video/Playlist?id=" + urlEncode(playKey));
+        }
+        SiteMediaResult pageMedia = mediaFromMediaResolver("yfsp", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            for (String candidate : pageMedia.candidates) {
+                addUnique(candidates, candidate);
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("yfsp", candidates.get(0), candidates, pageUrl);
+    }
+
+    private SiteMediaResult resolveTwitterMedia(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        SiteMediaResult pageMedia = mediaFromMediaResolver("twitter", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        TwitterStatus status = twitterStatusFromUrl(pageUrl);
+        if (status != null) {
+            String apiUrl = "https://api.vxtwitter.com/" + urlEncode(status.screenName) + "/status/" + urlEncode(status.statusId);
+            try {
+                candidates.addAll(extractJsonMediaCandidates(readText(apiUrl, pageUrl), apiUrl));
+            } catch (IOException ignored) {
+                // Keep page metadata candidates when the public helper API is unavailable.
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("twitter", candidates.get(0), candidates, pageUrl);
+    }
+
+    private TwitterStatus twitterStatusFromUrl(String pageUrl) {
+        try {
+            URL parsed = new URL(pageUrl);
+            String host = parsed.getHost() == null ? "" : parsed.getHost().toLowerCase(Locale.US);
+            if (!host.contains("twitter.com") && !host.equals("x.com") && !host.endsWith(".x.com")
+                    && !host.contains("vxtwitter.com") && !host.contains("fxtwitter.com")) {
+                return null;
+            }
+            Matcher matcher = TWITTER_STATUS_PATH.matcher(parsed.getPath() == null ? "" : parsed.getPath());
+            if (!matcher.find()) {
+                return null;
+            }
+            String screenName = htmlDecoded(matcher.group(1)).trim();
+            String statusId = htmlDecoded(matcher.group(2)).trim();
+            return screenName.isEmpty() || statusId.isEmpty() ? null : new TwitterStatus(screenName, statusId);
+        } catch (MalformedURLException ignored) {
+            return null;
+        }
+    }
+
+    private SiteMediaResult resolveInstagramMedia(String pageUrl, String pageText) {
+        String shortcode = instagramShortcodeFromUrl(pageUrl);
+        if (shortcode.isEmpty()) {
+            return mediaFromMediaResolver("instagram", pageUrl, pageText, pageUrl);
+        }
+        List<String> candidates = new ArrayList<>();
+        SiteMediaResult pageMedia = mediaFromMediaResolver("instagram", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        String embedUrl = "https://www.instagram.com/reel/" + urlEncode(shortcode) + "/embed/captioned/";
+        try {
+            candidates.addAll(extractJsonMediaCandidates(readText(embedUrl, pageUrl, instagramHeaders(pageUrl)), embedUrl));
+        } catch (IOException ignored) {
+            // Some posts disable embed access; continue with API fallback.
+        }
+        String mediaId = instagramMediaIdFromShortcode(shortcode);
+        if (!mediaId.isEmpty()) {
+            for (String apiUrl : new String[]{
+                    "https://i.instagram.com/api/v1/media/" + mediaId + "/info/",
+                    "https://www.instagram.com/api/v1/media/" + mediaId + "/info/"
+            }) {
+                try {
+                    candidates.addAll(extractJsonMediaCandidates(readText(apiUrl, pageUrl, instagramApiHeaders()), apiUrl));
+                } catch (IOException ignored) {
+                    // Try the alternate Instagram API host.
+                }
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("instagram", candidates.get(0), candidates, "https://www.instagram.com/");
+    }
+
+    private String instagramShortcodeFromUrl(String pageUrl) {
+        try {
+            URL parsed = new URL(pageUrl);
+            String host = parsed.getHost() == null ? "" : parsed.getHost().toLowerCase(Locale.US);
+            if (!host.contains("instagram.com")) {
+                return "";
+            }
+            Matcher matcher = INSTAGRAM_SHORTCODE_PATH.matcher(parsed.getPath() == null ? "" : parsed.getPath());
+            return matcher.find() ? htmlDecoded(matcher.group(1)).trim() : "";
+        } catch (MalformedURLException ignored) {
+            return "";
+        }
+    }
+
+    private String instagramMediaIdFromShortcode(String shortcode) {
+        String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        BigInteger mediaId = BigInteger.ZERO;
+        String code = shortcode == null ? "" : shortcode.trim();
+        if (code.isEmpty()) {
+            return "";
+        }
+        for (int i = 0; i < code.length(); i++) {
+            int index = alphabet.indexOf(code.charAt(i));
+            if (index < 0) {
+                return "";
+            }
+            mediaId = mediaId.multiply(BigInteger.valueOf(64L)).add(BigInteger.valueOf(index));
+        }
+        return String.valueOf(mediaId);
+    }
+
+    private Map<String, String> instagramHeaders(String refererUrl) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Accept", "*/*");
+        headers.put("Referer", firstNonEmpty(refererUrl, "https://www.instagram.com/"));
+        headers.put("Origin", "https://www.instagram.com");
+        return headers;
+    }
+
+    private Map<String, String> instagramApiHeaders() {
+        Map<String, String> headers = instagramHeaders("https://www.instagram.com/");
+        headers.put("X-IG-App-ID", "936619743392459");
+        headers.put("X-ASBD-ID", "198387");
+        headers.put("X-IG-WWW-Claim", "0");
+        return headers;
+    }
+
+    private SiteMediaResult resolveFacebookMedia(String pageUrl, String pageText) {
+        if (!isFacebookVideoPage(pageUrl)) {
+            return mediaFromMediaResolver("facebook", pageUrl, pageText, pageUrl);
+        }
+        List<String> candidates = new ArrayList<>();
+        SiteMediaResult pageMedia = mediaFromMediaResolver("facebook", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        FacebookGraphqlPayload graphqlPayload = extractFacebookGraphqlPayload(pageText);
+        if (graphqlPayload != null) {
+            try {
+                String body = facebookGraphqlBody(graphqlPayload);
+                candidates.addAll(extractJsonMediaCandidates(postForm("https://www.facebook.com/api/graphql/", body, pageUrl), pageUrl));
+            } catch (IOException ignored) {
+                // Keep static page candidates when GraphQL requires an authenticated/browser session.
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("facebook", candidates.get(0), candidates, pageUrl);
+    }
+
+    private boolean isFacebookVideoPage(String pageUrl) {
+        try {
+            URL parsed = new URL(pageUrl);
+            String host = parsed.getHost() == null ? "" : parsed.getHost().toLowerCase(Locale.US);
+            if (!host.contains("facebook.com") && !host.equals("fb.watch")) {
+                return false;
+            }
+            String path = parsed.getPath() == null ? "" : parsed.getPath();
+            return host.equals("fb.watch") || FACEBOOK_VIDEO_PATH.matcher(path).find();
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private FacebookGraphqlPayload extractFacebookGraphqlPayload(String pageText) {
+        String text = pageText == null ? "" : pageText;
+        Matcher lsdMatcher = FACEBOOK_LSD_FIELD.matcher(text);
+        Matcher queryMatcher = FACEBOOK_REELS_QUERY.matcher(text);
+        if (!lsdMatcher.find() || !queryMatcher.find()) {
+            return null;
+        }
+        String lsd = htmlDecoded(lsdMatcher.group(1)).trim();
+        String docId = htmlDecoded(queryMatcher.group(1)).trim();
+        String variables = htmlDecoded(queryMatcher.group(2)).trim();
+        if (lsd.isEmpty() || docId.isEmpty() || variables.isEmpty()) {
+            return null;
+        }
+        return new FacebookGraphqlPayload(lsd, docId, variables);
+    }
+
+    private String facebookGraphqlBody(FacebookGraphqlPayload payload) {
+        Map<String, String> form = new LinkedHashMap<>();
+        form.put("av", "0");
+        form.put("__aaid", "0");
+        form.put("__user", "0");
+        form.put("__a", "1");
+        form.put("__comet_req", "15");
+        form.put("fb_api_caller_class", "RelayModern");
+        form.put("fb_api_req_friendly_name", "FBReelsRootWithEntrypointQuery");
+        form.put("variables", payload.variables);
+        form.put("doc_id", payload.docId);
+        form.put("server_timestamps", "true");
+        form.put("lsd", payload.lsd);
+        StringBuilder builder = new StringBuilder();
+        for (Map.Entry<String, String> entry : form.entrySet()) {
+            if (builder.length() > 0) {
+                builder.append('&');
+            }
+            builder.append(urlEncode(entry.getKey())).append('=').append(urlEncode(entry.getValue()));
+        }
+        return builder.toString();
+    }
+
+    private SiteMediaResult resolveDailymotionMedia(String pageUrl, String pageText) {
+        String videoId = dailymotionVideoIdFromUrl(pageUrl);
+        if (videoId.isEmpty()) {
+            return mediaFromMediaResolver("dailymotion", pageUrl, pageText, pageUrl);
+        }
+        List<String> candidates = new ArrayList<>();
+        SiteMediaResult pageMedia = mediaFromMediaResolver("dailymotion", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        String metadataUrl = "https://www.dailymotion.com/player/metadata/video/" + urlEncode(videoId);
+        try {
+            candidates.addAll(extractJsonMediaCandidates(readText(metadataUrl, pageUrl), metadataUrl));
+        } catch (IOException ignored) {
+            // Fall back to page candidates when player metadata is unavailable.
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("dailymotion", candidates.get(0), candidates, pageUrl);
+    }
+
+    private String dailymotionVideoIdFromUrl(String pageUrl) {
+        try {
+            URL parsed = new URL(pageUrl);
+            String host = parsed.getHost() == null ? "" : parsed.getHost().toLowerCase(Locale.US);
+            if (!host.contains("dailymotion.com") && !host.equals("dai.ly")) {
+                return "";
+            }
+            Matcher matcher = DAILYMOTION_VIDEO_PATH.matcher(parsed.getPath() == null ? "" : parsed.getPath());
+            if (!matcher.find()) {
+                return "";
+            }
+            String videoId = htmlDecoded(matcher.group(1)).trim();
+            return videoId.matches("[A-Za-z0-9]+") ? videoId : "";
+        } catch (MalformedURLException ignored) {
+            return "";
+        }
+    }
+
+    private String extractYfspPlayKey(String pageUrl) {
+        try {
+            URL parsed = new URL(pageUrl);
+            String host = parsed.getHost() == null ? "" : parsed.getHost().toLowerCase(Locale.US);
+            if (!host.contains("yfsp.tv")) {
+                return "";
+            }
+            Matcher matcher = YFSP_PLAY_PATH.matcher(parsed.getPath() == null ? "" : parsed.getPath());
+            return matcher.find() ? htmlDecoded(matcher.group(1)).trim() : "";
+        } catch (MalformedURLException ignored) {
+            return "";
+        }
+    }
+
     private List<String> decodeBestJavPornPlayerSources(String playerText, String playerUrl) {
         List<String> candidates = new ArrayList<>();
         Matcher configMatcher = PLAYER_DATA_CONFIG.matcher(playerText == null ? "" : playerText);
@@ -1829,6 +2719,44 @@ final class DownloadEngine {
             return new JSONObject(text == null ? "{}" : text);
         } catch (Exception ignored) {
             return null;
+        }
+    }
+
+    private List<String> extractJsonMediaCandidates(String value, String baseUrl) {
+        List<String> candidates = new ArrayList<>(extractMediaCandidates(value == null ? "" : value, baseUrl));
+        String text = value == null ? "" : value.trim();
+        if (text.length() < 200000 && (text.startsWith("{") || text.startsWith("["))) {
+            try {
+                if (text.startsWith("{")) {
+                    collectJsonMediaCandidates(new JSONObject(text), baseUrl, candidates);
+                } else {
+                    collectJsonMediaCandidates(new JSONArray(text), baseUrl, candidates);
+                }
+            } catch (Exception ignored) {
+                // Regex extraction above still handles JavaScript-like or partial JSON payloads.
+            }
+        }
+        return prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+    }
+
+    private void collectJsonMediaCandidates(Object node, String baseUrl, List<String> candidates) {
+        if (node instanceof JSONObject) {
+            JSONObject object = (JSONObject) node;
+            Iterator<String> keys = object.keys();
+            while (keys.hasNext()) {
+                collectJsonMediaCandidates(object.opt(keys.next()), baseUrl, candidates);
+            }
+            return;
+        }
+        if (node instanceof JSONArray) {
+            JSONArray array = (JSONArray) node;
+            for (int i = 0; i < array.length(); i++) {
+                collectJsonMediaCandidates(array.opt(i), baseUrl, candidates);
+            }
+            return;
+        }
+        if (node instanceof String) {
+            candidates.addAll(extractMediaCandidates((String) node, baseUrl));
         }
     }
 
@@ -2301,6 +3229,22 @@ final class DownloadEngine {
 
     private String readText(String rawUrl, String refererUrl) throws IOException {
         HttpURLConnection connection = open(rawUrl, refererUrl);
+        return readText(connection, rawUrl);
+    }
+
+    private String readText(String rawUrl, String refererUrl, Map<String, String> extraHeaders) throws IOException {
+        HttpURLConnection connection = open(rawUrl, refererUrl);
+        if (extraHeaders != null) {
+            for (Map.Entry<String, String> header : extraHeaders.entrySet()) {
+                if (header.getKey() != null && header.getValue() != null) {
+                    connection.setRequestProperty(header.getKey(), header.getValue());
+                }
+            }
+        }
+        return readText(connection, rawUrl);
+    }
+
+    private String readText(HttpURLConnection connection, String rawUrl) throws IOException {
         int code = connection.getResponseCode();
         if (code >= HttpURLConnection.HTTP_BAD_REQUEST) {
             throw httpStatusException(connection, rawUrl, code);
@@ -3629,11 +4573,17 @@ final class DownloadEngine {
     private boolean isMediaUrl(String rawUrl) {
         String lowered = rawUrl.toLowerCase(Locale.US);
         return lowered.contains(".m3u8") || lowered.contains(".mp4") || lowered.contains(".mpd")
-                || lowered.contains(".webm") || lowered.contains(".m4v");
+                || lowered.contains(".webm") || lowered.contains(".m4v") || isYfspHlsManifest(rawUrl);
     }
 
     private boolean isHlsUrl(String rawUrl) {
-        return rawUrl.toLowerCase(Locale.US).contains(".m3u8");
+        return rawUrl.toLowerCase(Locale.US).contains(".m3u8") || isYfspHlsManifest(rawUrl);
+    }
+
+    private boolean isYfspHlsManifest(String rawUrl) {
+        String lowered = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        return lowered.contains("upload.yfsp.tv/api/video/masterplaylist")
+                || lowered.contains("upload.yfsp.tv/api/video/playlist");
     }
 
     private boolean isDashUrl(String rawUrl) {

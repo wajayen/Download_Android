@@ -2,7 +2,7 @@
 
 `Download_Android` 是 Windows 版「下載者」的 Android 原生移植專案。目標是在手機上提供接近桌面版的影片搜尋、解析、下載、續傳、播放與診斷能力，同時維持 Android 友善的操作方式。
 
-目前 Android 版本：`0.160.0`（`versionCode 160`）。
+目前 Android 版本：`0.170.0`（`versionCode 170`）。
 
 ## App 特色
 
@@ -42,6 +42,17 @@
 - v0.158.0: 777TV 詳情頁新增 Windows 版同源的 episode/play-page 追蹤，播放頁會先解析 `player_data`/HLS 候選後再交給下載器。
 - v0.159.0: 修正搜尋結果列表，移除站內搜尋頁 fallback 混入列表的情況，並補強影片候選的檔名/番號標題與縮圖抽取、縮圖 Referer 載入。
 - v0.160.0: Thanju 詳情頁/播放頁新增 Windows 版同源的 detail-to-play-page 追蹤，並補上 `cms_player` MacCMS 物件解析以取得實際 HLS/MP4 候選。
+- v0.161.0: Olevod/OleHDTV 詳情頁新增 Windows 版同源的 episode/play-page 追蹤，播放頁會先解析 MacCMS HLS/MP4 候選後再下載。
+- v0.162.0: DramaSQ 詳情頁新增 Windows 版同源的 episode/play-page 追蹤，播放頁會呼叫 `/drq/{id}/{ep}` API 抽取 HLS/MP4 候選後再下載。
+- v0.163.0: 3KOR 列表/詳情頁新增 Windows 版同源的 list-to-detail 追蹤、`bb_a` 播放 ID 解析、`u1.php` AES 解密與 `edit-down.php` HLS 包裝。
+- v0.164.0: NNYY 詳情頁新增 Windows 版同源的 `ep_slug`/`on_ep` 選集解析與 `/_gp/{id}/{ep}` API HLS 候選抽取。
+- v0.165.0: Ikanbot `/play/` 頁面新增 Windows 版同源的 hidden 欄位讀取、`e_token` 推導與 `/api/getResN` XHR 解析，優先取得 HLS/MP4/DASH 候選後再回退 generic traversal。
+- v0.166.0: YFSP `/play/{key}` SPA 播放頁新增 `upload.yfsp.tv/api/video/MasterPlayList` HLS manifest 解析，避免只下載到前端空殼 HTML。
+- v0.167.0: Twitter/X 狀態頁新增桌面版同源的 `api.vxtwitter.com/{user}/status/{id}` 解析 fallback，從 JSON 回傳中抽取 HLS/MP4 候選影片。
+- v0.168.0: Instagram `/reel/`、`/p/` 頁面新增桌面版同源的 shortcode 解析，依序嘗試頁面候選、embed/captioned 頁與 media info API 抽取 HLS/MP4 候選。
+- v0.169.0: Facebook `/reel/`、`/watch/`、`/videos/` 與 `fb.watch` 頁面新增桌面版同源的 GraphQL payload fallback，從頁面與 GraphQL JSON 中抽取 HLS/MP4 候選。
+- v0.170.0: Dailymotion 與 `dai.ly` 影片頁新增 Android 輕量替代解析，透過 `player/metadata/video/{id}` JSON 抽取 HLS/MP4 候選，降低對 yt-dlp fallback 的依賴。
+
 ## 下載功能
 
 - 支援直接貼上或分享影片網址到 App。
