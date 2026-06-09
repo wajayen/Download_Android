@@ -645,7 +645,7 @@ public final class MainActivity extends Activity {
             }
             queueSelectedSearchResult(result, fileName, playAfterThreshold);
         });
-        loadThumbnail(thumbnail, result.thumbnailUrl, result.refererUrl);
+        loadThumbnail(thumbnail, result.thumbnailUrl, result.thumbnailRefererUrl);
         return row;
     }
 
@@ -667,6 +667,7 @@ public final class MainActivity extends Activity {
         if (title.contains(": ")) {
             title = title.substring(title.indexOf(": ") + 2).trim();
         }
+        title = title.replaceFirst("(?i)^direct\\s+code\\s*:\\s*", "").trim();
         if (!title.isEmpty() && !"embedded link".equalsIgnoreCase(title)) {
             return title;
         }

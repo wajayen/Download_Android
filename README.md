@@ -2,7 +2,7 @@
 
 `Download_Android` 是 Windows 版「下載者」的 Android 原生移植專案。目標是在手機上提供接近桌面版的影片搜尋、解析、下載、續傳、播放與診斷能力，同時維持 Android 友善的操作方式。
 
-目前 Android 版本：`0.191.0`（`versionCode 191`）。
+目前 Android 版本：`0.192.0`（`versionCode 192`）。
 
 ## App 特色
 
@@ -73,6 +73,7 @@
 - v0.189.0: phimgood/ppqrrs/qqqrst/vodcnd/ryplay/ryiplay/yzzy/hhiklm/jisuziyuanbf/dytt/modujx/jisutian 類 Gimy/劇站播放域納入 MacCMS/CDN 來源辨識與第一層解析。
 - v0.190.0: bfvvs/surrit/oag7h 類 Gimy/NNYY/Xiaoya 常見 HLS 播放域納入 MacCMS/CDN 來源辨識與第一層解析，並於本版同步 GitHub Release。
 - v0.191.0: 搜尋結果列表修正標題與縮圖抽取流程，會優先從影片卡片區塊抓檔名/番號與圖片，缺漏時再進入影片頁讀取 `og:title`/`og:image` 等 metadata。
+- v0.192.0: 搜尋結果列表補上獨立縮圖 Referer，並讓 JAV/番號直連候選在顯示前讀取實際影片頁標題與縮圖，避免列表只出現代碼或無法載入受保護縮圖。
 
 ## 下載功能
 

@@ -62,17 +62,23 @@ final class VideoSearchResolver {
         final String sourceSite;
         final String refererUrl;
         final String thumbnailUrl;
+        final String thumbnailRefererUrl;
 
         Result(String url, String title, String sourceSite, String refererUrl) {
-            this(url, title, sourceSite, refererUrl, "");
+            this(url, title, sourceSite, refererUrl, "", "");
         }
 
         Result(String url, String title, String sourceSite, String refererUrl, String thumbnailUrl) {
+            this(url, title, sourceSite, refererUrl, thumbnailUrl, refererUrl);
+        }
+
+        Result(String url, String title, String sourceSite, String refererUrl, String thumbnailUrl, String thumbnailRefererUrl) {
             this.url = url;
             this.title = title;
             this.sourceSite = sourceSite;
             this.refererUrl = refererUrl == null ? "" : refererUrl;
             this.thumbnailUrl = thumbnailUrl == null ? "" : thumbnailUrl;
+            this.thumbnailRefererUrl = thumbnailRefererUrl == null ? "" : thumbnailRefererUrl;
         }
     }
 
@@ -266,7 +272,10 @@ final class VideoSearchResolver {
             if (out.size() >= MAX_RESULTS) {
                 return;
             }
-            addResult(item[1], item[0] + " direct code: " + javCode, "", seen, out);
+            RankedResult enriched = enrichSearchResult(
+                    new RankedResult(item[1], item[0] + ": " + javCode, 120, "", ""),
+                    item[1]);
+            addResult(enriched.url, enriched.title, "", seen, out, enriched.thumbnailUrl, enriched.thumbnailRefererUrl);
         }
     }
 
@@ -309,7 +318,7 @@ final class VideoSearchResolver {
                     return;
                 }
                 RankedResult enriched = enrichSearchResult(result, searchUrl);
-                addResult(enriched.url, enriched.title, searchUrl, seen, out, enriched.thumbnailUrl);
+                addResult(enriched.url, enriched.title, searchUrl, seen, out, enriched.thumbnailUrl, enriched.thumbnailRefererUrl);
             }
         } catch (IOException ignored) {
             // Skip blocked search pages; the picker should only show concrete video candidates.
@@ -333,7 +342,7 @@ final class VideoSearchResolver {
                 continue;
             }
             String thumbnailUrl = firstNonEmptyTitle(extractThumbnailUrl(cardHtml, baseUrl), extractThumbnailUrl(nearbyHtml, baseUrl));
-            ranked.add(new RankedResult(url, sourceLabel + ": " + title, score, thumbnailUrl));
+            ranked.add(new RankedResult(url, sourceLabel + ": " + title, score, thumbnailUrl, baseUrl));
         }
         Matcher dataMatcher = DATA_LINK.matcher(html == null ? "" : html);
         while (dataMatcher.find() && ranked.size() < SITE_SEARCH_LINK_LIMIT * 4) {
@@ -349,7 +358,7 @@ final class VideoSearchResolver {
             String cardHtml = resultCardHtml(html, dataMatcher.start(), dataMatcher.end());
             String title = firstNonEmptyTitle(extractNearbyTitle(cardHtml), extractNearbyTitle(nearbyHtml), titleFromUrl(url), "embedded link");
             String thumbnailUrl = firstNonEmptyTitle(extractThumbnailUrl(cardHtml, baseUrl), extractThumbnailUrl(nearbyHtml, baseUrl));
-            ranked.add(new RankedResult(url, sourceLabel + ": " + title, score, thumbnailUrl));
+            ranked.add(new RankedResult(url, sourceLabel + ": " + title, score, thumbnailUrl, baseUrl));
         }
         Collections.sort(ranked, new Comparator<RankedResult>() {
             @Override
@@ -375,10 +384,14 @@ final class VideoSearchResolver {
     }
 
     private static void addResult(String url, String title, String refererUrl, Set<String> seen, List<Result> out, String thumbnailUrl) {
+        addResult(url, title, refererUrl, seen, out, thumbnailUrl, refererUrl);
+    }
+
+    private static void addResult(String url, String title, String refererUrl, Set<String> seen, List<Result> out, String thumbnailUrl, String thumbnailRefererUrl) {
         if (url == null || url.isEmpty() || !isSupportedCandidate(url) || !seen.add(url)) {
             return;
         }
-        out.add(new Result(url, cleanTitle(title), MediaResolver.sourceSite(url), refererUrl, thumbnailUrl));
+        out.add(new Result(url, cleanTitle(title), MediaResolver.sourceSite(url), refererUrl, thumbnailUrl, thumbnailRefererUrl));
     }
 
     private static RankedResult enrichSearchResult(RankedResult result, String refererUrl) {
@@ -389,7 +402,9 @@ final class VideoSearchResolver {
         String titleWithoutSite = displayTitle.contains(": ")
                 ? displayTitle.substring(displayTitle.indexOf(": ") + 2).trim()
                 : displayTitle;
-        boolean needsTitle = !looksLikeUsableTitle(titleWithoutSite) || "embedded link".equalsIgnoreCase(titleWithoutSite);
+        boolean needsTitle = !looksLikeUsableTitle(titleWithoutSite)
+                || "embedded link".equalsIgnoreCase(titleWithoutSite)
+                || looksLikeCodeOnlyTitle(titleWithoutSite);
         boolean needsThumbnail = result.thumbnailUrl == null || result.thumbnailUrl.trim().isEmpty();
         if (!needsTitle && !needsThumbnail) {
             return result;
@@ -406,7 +421,8 @@ final class VideoSearchResolver {
                     ? sourcePrefix + pageTitle
                     : result.title;
             String thumb = needsThumbnail && !pageThumb.isEmpty() ? pageThumb : result.thumbnailUrl;
-            return new RankedResult(result.url, title, result.score, thumb);
+            String thumbReferer = needsThumbnail && !pageThumb.isEmpty() ? result.url : result.thumbnailRefererUrl;
+            return new RankedResult(result.url, title, result.score, thumb, thumbReferer);
         } catch (IOException ignored) {
             return result;
         }
@@ -546,6 +562,16 @@ final class VideoSearchResolver {
                 && !lowered.equals("watch")
                 && !lowered.equals("more")
                 && !lowered.contains("javascript:");
+    }
+
+    private static boolean looksLikeCodeOnlyTitle(String title) {
+        String value = title == null ? "" : title.trim();
+        if (value.length() < 4 || value.length() > 24) {
+            return false;
+        }
+        return !extractJavCode(value).isEmpty()
+                || Pattern.compile("^[A-Za-z]{2,10}[-_\\s]?\\d{2,8}[A-Za-z]?$", Pattern.CASE_INSENSITIVE).matcher(value).matches()
+                || Pattern.compile("^FC2[-_\\s]?PPV[-_\\s]?\\d{3,10}$", Pattern.CASE_INSENSITIVE).matcher(value).matches();
     }
 
     private static String titleFromUrl(String rawUrl) {
@@ -817,16 +843,22 @@ final class VideoSearchResolver {
         final String title;
         final int score;
         final String thumbnailUrl;
+        final String thumbnailRefererUrl;
 
         RankedResult(String url, String title, int score) {
-            this(url, title, score, "");
+            this(url, title, score, "", "");
         }
 
         RankedResult(String url, String title, int score, String thumbnailUrl) {
+            this(url, title, score, thumbnailUrl, "");
+        }
+
+        RankedResult(String url, String title, int score, String thumbnailUrl, String thumbnailRefererUrl) {
             this.url = url;
             this.title = title;
             this.score = score;
             this.thumbnailUrl = thumbnailUrl == null ? "" : thumbnailUrl;
+            this.thumbnailRefererUrl = thumbnailRefererUrl == null ? "" : thumbnailRefererUrl;
         }
     }
 }
