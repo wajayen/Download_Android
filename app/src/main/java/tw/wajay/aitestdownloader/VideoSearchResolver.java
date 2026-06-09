@@ -58,7 +58,6 @@ final class VideoSearchResolver {
     private static final Pattern TITLE_ATTR = Pattern.compile(
             "\\b(?:title|alt|aria-label|data-title|data-name)=[\"']([^\"']{2,160})[\"']",
             Pattern.CASE_INSENSITIVE);
-
     private VideoSearchResolver() {
     }
 
@@ -159,6 +158,7 @@ final class VideoSearchResolver {
                 break;
             }
         }
+        rankSearchResults(results, cleanQuery);
         return results;
     }
 
@@ -185,7 +185,8 @@ final class VideoSearchResolver {
 
     private static String[][] generalTemplates() {
         return new String[][]{
-                {"MovieFFM", "https://www.movieffm.net/?s=%s"},
+                {"MovieFFM", "https://www.movieffm.me/xssearch?q=%s"},
+                {"MovieFFM", "https://www.movieffm.net/xssearch?q=%s"},
                 {"XiaoyaKankan", "https://tw.xiaoyakankan.com/vod/search.html?wd=%s"},
                 {"XiaoyaKankan", "https://tw.xiaoyakankan.tv/vod/search.html?wd=%s"},
                 {"XiaoyaKankan", "https://tw.xiaoyakankan.io/vod/search.html?wd=%s"},
@@ -243,7 +244,8 @@ final class VideoSearchResolver {
                 {"HayAV", "https://hayav.com/?s=%s"},
                 {"GGJAV", "https://ggjav.com/search/%s"},
                 {"TKTube", "https://tktube.com/search/%s"},
-                {"MovieFFM", "https://www.movieffm.net/?s=%s"},
+                {"MovieFFM", "https://www.movieffm.me/xssearch?q=%s"},
+                {"MovieFFM", "https://www.movieffm.net/xssearch?q=%s"},
                 {"XiaoyaKankan", "https://tw.xiaoyakankan.com/vod/search.html?wd=%s"},
                 {"Gimy", "https://gimy.ai/search.html?wd=%s"},
                 {"Gimy", "https://gimy.tw/search.html?wd=%s"}
@@ -290,7 +292,7 @@ final class VideoSearchResolver {
         queries.add(query + " download video");
         queries.add(query + " m3u8 mp4");
         String[] sites = new String[]{
-                "movieffm.net", "gimy", "xiaoyakankan.com", "iq.com", "dramasq", "olevod.com",
+                "movieffm.me", "movieffm.net", "gimy", "xiaoyakankan.com", "iq.com", "dramasq", "olevod.com",
                 "3kor.com", "99itv.net", "nnyy.in", "missav", "jable.tv", "njav",
                 "supjav.com", "bestjavporn.com", "javdock.com", "javfilms.com",
                 "18jav.tv", "85xvideo.com", "avbebe.com", "avjoy.me", "tinyavideo.com",
@@ -478,6 +480,70 @@ final class VideoSearchResolver {
             return;
         }
         out.add(new Result(url, cleanTitle(title), MediaResolver.sourceSite(url), refererUrl, thumbnailUrl, thumbnailRefererUrl));
+    }
+
+    private static void rankSearchResults(List<Result> results, String query) {
+        Collections.sort(results, new Comparator<Result>() {
+            @Override
+            public int compare(Result left, Result right) {
+                int leftRank = resultRank(left, query);
+                int rightRank = resultRank(right, query);
+                if (leftRank != rightRank) {
+                    return Integer.compare(leftRank, rightRank);
+                }
+                int leftSite = sitePriority(left.url);
+                int rightSite = sitePriority(right.url);
+                if (leftSite != rightSite) {
+                    return Integer.compare(leftSite, rightSite);
+                }
+                return Integer.compare(cleanTitle(left.title).length(), cleanTitle(right.title).length());
+            }
+        });
+    }
+
+    private static int resultRank(Result result, String query) {
+        String title = normalizeSearchText(result == null ? "" : result.title);
+        String url = normalizeSearchText(result == null ? "" : result.url);
+        String needle = normalizeSearchText(query);
+        if (!needle.isEmpty() && title.equals(needle)) {
+            return 0;
+        }
+        if (!needle.isEmpty() && title.startsWith(needle)) {
+            return 1;
+        }
+        if (!needle.isEmpty() && title.contains(needle)) {
+            return 2;
+        }
+        if (!needle.isEmpty() && url.contains(needle)) {
+            return 3;
+        }
+        return 9;
+    }
+
+    private static int sitePriority(String rawUrl) {
+        String url = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        if (url.contains("movieffm.net") || url.contains("movieffm.me")) {
+            return 8;
+        }
+        if (url.contains("tw.xiaoyakankan.tv")) {
+            return 5;
+        }
+        if (url.contains("tw.xiaoyakankan.io")) {
+            return 6;
+        }
+        if (url.contains("xiaoyakankan")) {
+            return 7;
+        }
+        if (url.contains("gimy")) {
+            return 14;
+        }
+        if (url.contains("iq.com")) {
+            return 18;
+        }
+        if (url.contains("nnyy.in")) {
+            return 20;
+        }
+        return 40;
     }
 
     private static RankedResult enrichSearchResult(RankedResult result, String refererUrl) {
@@ -882,7 +948,7 @@ final class VideoSearchResolver {
                 "/voddetail/", "/voddetail2/", "/vodplay/", "/vod/",
                 "/index.php/vod/detail/", "/index.php/vod/play/",
                 "/detail/", "/details/", "/title/", "/play/", "/watch/",
-                "/video/", "/videos/", "/movie/", "/drama/", "/album/", "/episode/",
+                "/video/", "/videos/", "/movie/", "/tv/", "/anime/", "/drama/", "/album/", "/episode/",
                 "/eps/", "/xvideos/", "/archives/", "/html/", "/vr_html/",
                 "/dm", "/fc2-ppv-", "/fc2ppv-"
         };

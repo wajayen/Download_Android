@@ -65,7 +65,7 @@ final class MediaResolver {
             "(?:var\\s+)?(cms_player|player_data|player_aaaa|player)\\s*=\\s*\\{",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern SITE_PLAY_LINK = Pattern.compile(
-            "<a([^>]+)href=[\"']([^\"']*(?:/(?:vod)?play/|/vodplay/|/watch/|/video/|/videos/|/embed/|/amateurjav_content/|/eps/|/episode/|/vod/detail/|/voddetail/|/voddetail2/|/detail/|/title/|/drama/|/index\\.php/vod/(?:play|detail)/|/dianying/|/dianshiju/|/zongyi/|/dongman/)[^\"']+)[\"']([^>]*)>(.*?)</a>",
+            "<a([^>]+)href=[\"']([^\"']*(?:/(?:vod)?play/|/vodplay/|/watch/|/video/|/videos/|/embed/|/amateurjav_content/|/eps/|/episode/|/vod/detail/|/voddetail/|/voddetail2/|/detail/|/title/|/movie/|/tv/|/anime/|/drama/|/index\\.php/vod/(?:play|detail)/|/dianying/|/dianshiju/|/zongyi/|/dongman/)[^\"']+)[\"']([^>]*)>(.*?)</a>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern ANI_GAMER_EPISODE_LINK = Pattern.compile(
             "<a[^>]+href=[\"']([^\"']*(?:animeVideo\\.php\\?sn=\\d+|\\?sn=\\d+)[^\"']*)[\"'][^>]*>",
@@ -104,13 +104,13 @@ final class MediaResolver {
             "\"url\"\\s*:\\s*\"((?:https?:)?//[^\"]+)\"\\s*,\\s*\"type\"\\s*:\\s*\"iframe\"",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern MOVIEFFM_DRAMA_DETAIL_URL = Pattern.compile(
-            "href=[\"'](https?://www\\.movieffm\\.net/drama/\\d+/)[\"']",
+            "href=[\"'](https?://www\\.movieffm\\.(?:net|me)/(?:drama|tv|movie|anime)/\\d+/)[\"']",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern MOVIEFFM_EPISODE_JSON = Pattern.compile(
             "\"name\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"url\"\\s*:\\s*\"([^\"]+)\"",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern MOVIEFFM_EPISODE_ABSOLUTE = Pattern.compile(
-            "https://www\\.movieffm\\.net/[^\"'<>\\s]+",
+            "https://www\\.movieffm\\.(?:net|me)/[^\"'<>\\s]+",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern XIAOYA_PLAY_URL = Pattern.compile(
             "(?:href|data-url|data-href|data-play|url|play_url|playUrl)\\s*[:=]\\s*[\"']([^\"']*/vod/play/id/[^\"']+)[\"']",
@@ -177,7 +177,7 @@ final class MediaResolver {
     static String sourceSite(String rawUrl) {
         String host = Uri.parse(rawUrl).getHost();
         String lowered = host == null ? "" : host.toLowerCase(Locale.US);
-        if (lowered.contains("movieffm.net")) {
+        if (lowered.contains("movieffm.net") || lowered.contains("movieffm.me")) {
             return "movieffm";
         }
         if (lowered.contains("gimy")) {

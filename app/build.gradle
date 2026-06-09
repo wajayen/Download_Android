@@ -14,8 +14,8 @@ android {
         applicationId "tw.wajay.aitestdownloader"
         minSdk 23
         targetSdk 35
-        versionCode 197
-        versionName "0.197.0"
+        versionCode 200
+        versionName "0.200.0"
         buildConfigField "String", "BUILD_DATE", "\"${new java.text.SimpleDateFormat('yyyy年MM月dd日').format(new Date())}\""
     }
 }
