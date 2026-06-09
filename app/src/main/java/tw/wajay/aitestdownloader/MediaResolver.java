@@ -170,7 +170,8 @@ final class MediaResolver {
                 || lowered.contains(".mp4")
                 || lowered.contains(".mpd")
                 || lowered.contains(".webm")
-                || lowered.contains(".m4v");
+                || lowered.contains(".m4v")
+                || isStreamtapeMediaUrl(lowered);
     }
 
     static String sourceSite(String rawUrl) {
@@ -190,6 +191,21 @@ final class MediaResolver {
         }
         if (isDoodFamilyHost(lowered)) {
             return "dood";
+        }
+        if (isStreamtapeFamilyHost(lowered) || lowered.contains("voe.sx")) {
+            return "streamtape";
+        }
+        if (isFileHostFamilyHost(lowered)) {
+            return "filehost";
+        }
+        if (isSbHostFamilyHost(lowered)) {
+            return "sbhost";
+        }
+        if (isMirrorHostFamilyHost(lowered)) {
+            return "mirrorhost";
+        }
+        if (isCdnSourceHost(lowered)) {
+            return "cdnsource";
         }
         if (lowered.contains("evoload.io")) {
             return "evoload";
@@ -1206,7 +1222,95 @@ final class MediaResolver {
         return lowered.contains("mixdrop.ag")
                 || lowered.contains("m1xdrop.click")
                 || isDoodFamilyHost(lowered)
+                || isStreamtapeFamilyHost(lowered)
+                || lowered.contains("voe.sx")
+                || isFileHostFamilyHost(lowered)
+                || isSbHostFamilyHost(lowered)
+                || isMirrorHostFamilyHost(lowered)
+                || isCdnSourceHost(lowered)
                 || lowered.contains("evoload.io");
+    }
+
+    private static boolean isStreamtapeMediaUrl(String loweredUrl) {
+        return (loweredUrl.contains("streamtape.") || loweredUrl.contains("streamta.pe") || loweredUrl.contains("strtape."))
+                && loweredUrl.contains("/get_video?");
+    }
+
+    private static boolean isStreamtapeFamilyHost(String loweredHost) {
+        String host = loweredHost == null ? "" : loweredHost.toLowerCase(Locale.US);
+        return host.contains("streamtape.")
+                || host.contains("streamta.pe")
+                || host.contains("strtape.");
+    }
+
+    private static boolean isFileHostFamilyHost(String loweredHost) {
+        String host = loweredHost == null ? "" : loweredHost.toLowerCase(Locale.US);
+        return host.contains("filemoon.")
+                || host.contains("streamwish.")
+                || host.contains("filelions.")
+                || host.contains("embedrise.com")
+                || host.contains("embedgram.com")
+                || host.contains("vidoza.")
+                || host.contains("tapewithadblock.");
+    }
+
+    private static boolean isSbHostFamilyHost(String loweredHost) {
+        String host = loweredHost == null ? "" : loweredHost.toLowerCase(Locale.US);
+        return host.contains("streamsb.")
+                || host.contains("watchsb.")
+                || host.contains("watchsb.com")
+                || host.contains("sbembed.")
+                || host.contains("sbfull.")
+                || host.contains("ninjastream.");
+    }
+
+    private static boolean isMirrorHostFamilyHost(String loweredHost) {
+        String host = loweredHost == null ? "" : loweredHost.toLowerCase(Locale.US);
+        return host.contains("asianclub.tv")
+                || host.contains("fileone.tv")
+                || host.contains("mmfl")
+                || host.contains("mmsw")
+                || host.contains("mm984")
+                || host.contains("mmsi")
+                || host.contains("mmvh");
+    }
+
+    private static boolean isCdnSourceHost(String loweredHost) {
+        String host = loweredHost == null ? "" : loweredHost.toLowerCase(Locale.US);
+        return host.contains("xluuss")
+                || host.contains("lzcdn")
+                || host.contains("lz-cdn")
+                || host.contains("letvoss")
+                || host.contains("ukubf")
+                || host.contains("subokk")
+                || host.contains("bdzybf")
+                || host.contains("ijycnd")
+                || host.contains("huyall")
+                || host.contains("qsstvw")
+                || host.contains("gsuus")
+                || host.contains("hhuus")
+                || host.contains("jisuzyv")
+                || host.contains("bfllvip")
+                || host.contains("bfvvs")
+                || host.contains("taopianplay1")
+                || host.contains("phimgood")
+                || host.contains("ppqrrs")
+                || host.contains("qqqrst")
+                || host.contains("surrit")
+                || host.contains("oag7h")
+                || host.contains("vodcnd")
+                || host.contains("ryplay")
+                || host.contains("ryiplay")
+                || host.contains("yzzy")
+                || host.contains("hhiklm")
+                || host.contains("jisuziyuanbf")
+                || host.contains("dytt-cinema")
+                || host.contains("dytt-kan")
+                || host.contains("dytt-see")
+                || host.contains("dytt-film")
+                || host.contains("dytt-video")
+                || host.contains("modujx")
+                || host.contains("jisutian");
     }
 
     private static boolean isDoodFamilyHost(String loweredHost) {
@@ -1448,7 +1552,7 @@ final class MediaResolver {
             score += hostPenalty(lowered, new String[]{"xluuss", "phimgood", "ppqrrs", "ryplay", "ryiplay", "yzzy", "hhiklm", "jisuziyuanbf", "dytt-cinema", "dytt-kan", "modujx", "jisutian", "jisuzyv"});
         } else if ("xiaoyakankan".equals(sourceSite)) {
             score += hostPenalty(lowered, new String[]{"huyall", "ijycnd", "jisuzyv", "gsuus", "qsstvw", "taopianplay1"});
-        } else if ("mixdrop".equals(sourceSite) || "dood".equals(sourceSite) || "evoload".equals(sourceSite)) {
+        } else if ("mixdrop".equals(sourceSite) || "dood".equals(sourceSite) || "streamtape".equals(sourceSite) || "filehost".equals(sourceSite) || "sbhost".equals(sourceSite) || "mirrorhost".equals(sourceSite) || "cdnsource".equals(sourceSite) || "evoload".equals(sourceSite)) {
             if (isMediaUrl(lowered)) {
                 score -= 160;
             }

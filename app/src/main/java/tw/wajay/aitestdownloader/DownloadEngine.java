@@ -74,6 +74,12 @@ final class DownloadEngine {
     private static final Pattern ESCAPED_MEDIA_URL = Pattern.compile(
             "https?:\\\\/\\\\/[^\\s\"'<>]+?\\.(?:m3u8|mp4|mpd|webm|m4v)(?:\\?[^\\s\"'<>]*)?",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern MIXDROP_PLAY_ID = Pattern.compile("/(?:e|f|embed)/([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DOOD_PASS_MD5_PATH = Pattern.compile("(/pass_md5/[^\"'\\s<>\\\\]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DOOD_ANY_HTTP_URL = Pattern.compile("https?://[^\\s\"'<>\\\\]+", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DOOD_TOKEN_VALUE = Pattern.compile("(?:[?&]|\\b)token\\s*[:=]\\s*['\"]?([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DOOD_EXPIRY_VALUE = Pattern.compile("(?:[?&]|\\b)expiry\\s*[:=]\\s*['\"]?(\\d{10,})", Pattern.CASE_INSENSITIVE);
+    private static final Pattern STREAMTAPE_GET_VIDEO_PATH = Pattern.compile("(/get_video\\?[^\"'\\s<>\\\\]+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern ATTRIBUTE_PAIR = Pattern.compile("([A-Z0-9-]+)=((?:\"[^\"]+\")|[^,]+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern ANIME1_API_REQ = Pattern.compile("data-apireq=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
     private static final Pattern BESTJAVPORN_VIDEO_ID = Pattern.compile("\\bvideo-id=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
@@ -1016,6 +1022,27 @@ final class DownloadEngine {
         if ("evoload".equals(site)) {
             return resolveEvoLoadMedia(pageUrl, pageText);
         }
+        if ("mixdrop".equals(site)) {
+            return resolveMixdropMedia(pageUrl, pageText);
+        }
+        if ("dood".equals(site)) {
+            return resolveDoodMedia(pageUrl, pageText);
+        }
+        if ("streamtape".equals(site)) {
+            return resolveStreamtapeMedia(pageUrl, pageText);
+        }
+        if ("filehost".equals(site)) {
+            return resolveFileHostMedia(pageUrl, pageText);
+        }
+        if ("sbhost".equals(site)) {
+            return resolveSbHostMedia(pageUrl, pageText);
+        }
+        if ("mirrorhost".equals(site)) {
+            return resolveMirrorHostMedia(pageUrl, pageText);
+        }
+        if ("cdnsource".equals(site)) {
+            return resolveCdnSourceMedia(pageUrl, pageText);
+        }
         if ("tktube".equals(site)) {
             return resolveTkTubeMedia(pageUrl, pageText);
         }
@@ -1173,6 +1200,307 @@ final class DownloadEngine {
             return null;
         }
         return new SiteMediaResult("javdock", candidates.get(0), candidates, playerUrl);
+    }
+
+    private SiteMediaResult resolveMixdropMedia(String pageUrl, String pageText) throws IOException {
+        List<String> candidates = new ArrayList<>();
+        String watchUrl = mixdropWatchUrl(pageUrl);
+        String referer = firstNonEmpty(watchUrl, pageUrl);
+        SiteMediaResult pageMedia = mediaFromMediaResolver("mixdrop", pageUrl, pageText, referer);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        if (!watchUrl.isEmpty() && !watchUrl.equals(pageUrl)) {
+            try {
+                String watchText = readText(watchUrl, pageUrl);
+                SiteMediaResult watchMedia = mediaFromMediaResolver("mixdrop", watchUrl, watchText, watchUrl);
+                if (watchMedia != null) {
+                    candidates.addAll(watchMedia.candidates);
+                }
+            } catch (IOException ignored) {
+                // Keep candidates from the original page; some mirrors block direct embed fetches.
+            }
+        }
+        if (isMediaUrl(pageUrl)) {
+            addUnique(candidates, pageUrl);
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("mixdrop", candidates.get(0), candidates, referer);
+    }
+
+    private String mixdropWatchUrl(String rawUrl) {
+        if (rawUrl == null || rawUrl.trim().isEmpty()) {
+            return "";
+        }
+        String normalized = htmlDecoded(rawUrl).trim();
+        try {
+            URL parsed = new URL(normalized);
+            String host = parsed.getHost();
+            if (host == null) {
+                return normalized;
+            }
+            String loweredHost = host.toLowerCase(Locale.US);
+            if (!(loweredHost.contains("mixdrop.ag") || loweredHost.contains("m1xdrop.click"))) {
+                return normalized;
+            }
+            Matcher idMatcher = MIXDROP_PLAY_ID.matcher(parsed.getPath() == null ? "" : parsed.getPath());
+            if (!idMatcher.find()) {
+                return normalized;
+            }
+            return parsed.getProtocol() + "://" + host + "/e/" + idMatcher.group(1);
+        } catch (MalformedURLException ignored) {
+            return normalized;
+        }
+    }
+
+    private SiteMediaResult resolveDoodMedia(String pageUrl, String pageText) throws IOException {
+        List<String> candidates = new ArrayList<>();
+        SiteMediaResult pageMedia = mediaFromMediaResolver("dood", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        for (String passUrl : extractDoodPassUrls(pageText, pageUrl)) {
+            if (cancelled.get()) {
+                return null;
+            }
+            try {
+                Map<String, String> headers = new LinkedHashMap<>();
+                headers.put("X-Requested-With", "XMLHttpRequest");
+                String responseText = readText(passUrl, pageUrl, headers);
+                candidates.addAll(extractDoodResponseCandidates(responseText, passUrl, pageText));
+            } catch (IOException ignored) {
+                // Try the next pass_md5 endpoint or fall back to page-level media candidates.
+            }
+        }
+        for (String candidate : extractMediaCandidates(pageText == null ? "" : pageText, pageUrl)) {
+            if (isMediaUrl(candidate) && isDoodTransientMediaUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("dood", candidates.get(0), candidates, pageUrl);
+    }
+
+    private List<String> extractDoodPassUrls(String pageText, String pageUrl) {
+        List<String> out = new ArrayList<>();
+        Matcher matcher = DOOD_PASS_MD5_PATH.matcher((pageText == null ? "" : pageText).replace("\\/", "/"));
+        while (matcher.find()) {
+            addUnique(out, joinUrl(pageUrl, htmlDecoded(matcher.group(1)).trim()));
+        }
+        return out;
+    }
+
+    private List<String> extractDoodResponseCandidates(String responseText, String passUrl, String pageText) {
+        List<String> out = new ArrayList<>();
+        String text = htmlDecoded(responseText == null ? "" : responseText).replace("\\/", "/").trim();
+        addDoodCandidate(out, text, pageText);
+        if (isMediaUrl(text) && isDoodTransientMediaUrl(text)) {
+            addUnique(out, text);
+        }
+        Matcher matcher = DOOD_ANY_HTTP_URL.matcher(text);
+        while (matcher.find()) {
+            String candidate = matcher.group();
+            addDoodCandidate(out, candidate, pageText);
+        }
+        out.addAll(extractMediaCandidates(text, passUrl));
+        return out;
+    }
+
+    private void addDoodCandidate(List<String> out, String rawCandidate, String pageText) {
+        String candidate = cleanDoodCandidate(rawCandidate);
+        if (candidate.isEmpty()) {
+            return;
+        }
+        if (isMediaUrl(candidate) && isDoodTransientMediaUrl(candidate)) {
+            addUnique(out, candidate);
+        }
+        String finalized = doodTokenizedMediaUrl(candidate, pageText);
+        if (isMediaUrl(finalized) && isDoodTransientMediaUrl(finalized)) {
+            addUnique(out, finalized);
+        }
+    }
+
+    private String doodTokenizedMediaUrl(String rawCandidate, String pageText) {
+        String candidate = cleanDoodCandidate(rawCandidate);
+        if (candidate.isEmpty() || candidate.contains("token=")) {
+            return "";
+        }
+        String token = firstMatch(pageText, DOOD_TOKEN_VALUE);
+        if (token.isEmpty()) {
+            return "";
+        }
+        String expiry = firstMatch(pageText, DOOD_EXPIRY_VALUE);
+        if (expiry.isEmpty()) {
+            expiry = String.valueOf(System.currentTimeMillis() + 6L * 60L * 60L * 1000L);
+        }
+        String separator = candidate.contains("?") ? "&" : "?";
+        return candidate + doodRandomSuffix(candidate) + separator + "token=" + urlEncode(token) + "&expiry=" + expiry;
+    }
+
+    private String cleanDoodCandidate(String rawCandidate) {
+        return htmlDecoded(rawCandidate == null ? "" : rawCandidate)
+                .replace("\\/", "/")
+                .trim()
+                .replaceAll("[);,]+$", "");
+    }
+
+    private String doodRandomSuffix(String value) {
+        String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        long seed = Math.abs((long) (value == null ? 0 : value.hashCode())) + System.currentTimeMillis();
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < 10; i++) {
+            out.append(alphabet.charAt((int) (seed % alphabet.length())));
+            seed = seed / alphabet.length() + 17L;
+        }
+        return out.toString();
+    }
+
+    private boolean isDoodTransientMediaUrl(String rawUrl) {
+        if (rawUrl == null || rawUrl.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            String host = new URL(rawUrl).getHost();
+            String lowered = host == null ? "" : host.toLowerCase(Locale.US);
+            return lowered.contains("cloudatacdn.com")
+                    || isDoodFamilyHost(lowered);
+        } catch (MalformedURLException ignored) {
+            return false;
+        }
+    }
+
+    private boolean isDoodFamilyHost(String loweredHost) {
+        String host = loweredHost == null ? "" : loweredHost.toLowerCase(Locale.US);
+        return host.contains("dood.video")
+                || host.contains("doodstream.")
+                || host.contains("d000d.")
+                || host.contains("do7go.com")
+                || host.contains("dooood.")
+                || host.contains("dood.")
+                || host.contains("dood.so")
+                || host.contains("dood.pm")
+                || host.contains("dood.wf")
+                || host.contains("dood.re")
+                || host.contains("dood.yt");
+    }
+
+    private SiteMediaResult resolveStreamtapeMedia(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        SiteMediaResult pageMedia = mediaFromMediaResolver("streamtape", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        for (String candidate : extractStreamtapeGetVideoCandidates(pageText, pageUrl)) {
+            if (isMediaUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        for (String candidate : extractMediaCandidates(pageText == null ? "" : pageText, pageUrl)) {
+            if (isMediaUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("streamtape", candidates.get(0), candidates, pageUrl);
+    }
+
+    private List<String> extractStreamtapeGetVideoCandidates(String pageText, String pageUrl) {
+        List<String> out = new ArrayList<>();
+        Matcher matcher = STREAMTAPE_GET_VIDEO_PATH.matcher((pageText == null ? "" : pageText).replace("\\/", "/"));
+        while (matcher.find()) {
+            String candidate = joinUrl(pageUrl, htmlDecoded(matcher.group(1)).replace("&amp;", "&").trim());
+            if (isStreamtapeMediaUrl(candidate)) {
+                addUnique(out, candidate);
+            }
+        }
+        return out;
+    }
+
+    private boolean isStreamtapeMediaUrl(String rawUrl) {
+        String lowered = rawUrl == null ? "" : rawUrl.toLowerCase(Locale.US);
+        return (lowered.contains("streamtape.") || lowered.contains("streamta.pe") || lowered.contains("strtape."))
+                && lowered.contains("/get_video?");
+    }
+
+    private SiteMediaResult resolveFileHostMedia(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        SiteMediaResult pageMedia = mediaFromMediaResolver("filehost", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        for (String candidate : extractMediaCandidates(pageText == null ? "" : pageText, pageUrl)) {
+            if (isMediaUrl(candidate) && !looksLikeImageUrl(candidate) && !isPreviewMediaUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("filehost", candidates.get(0), candidates, pageUrl);
+    }
+
+    private SiteMediaResult resolveSbHostMedia(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        SiteMediaResult pageMedia = mediaFromMediaResolver("sbhost", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        for (String candidate : extractMediaCandidates(pageText == null ? "" : pageText, pageUrl)) {
+            if (isMediaUrl(candidate) && !looksLikeImageUrl(candidate) && !isPreviewMediaUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("sbhost", candidates.get(0), candidates, pageUrl);
+    }
+
+    private SiteMediaResult resolveMirrorHostMedia(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        SiteMediaResult pageMedia = mediaFromMediaResolver("mirrorhost", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        for (String candidate : extractMediaCandidates(pageText == null ? "" : pageText, pageUrl)) {
+            if (isMediaUrl(candidate) && !looksLikeImageUrl(candidate) && !isPreviewMediaUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("mirrorhost", candidates.get(0), candidates, pageUrl);
+    }
+
+    private SiteMediaResult resolveCdnSourceMedia(String pageUrl, String pageText) {
+        List<String> candidates = new ArrayList<>();
+        SiteMediaResult pageMedia = mediaFromMediaResolver("cdnsource", pageUrl, pageText, pageUrl);
+        if (pageMedia != null) {
+            candidates.addAll(pageMedia.candidates);
+        }
+        for (String candidate : extractMediaCandidates(pageText == null ? "" : pageText, pageUrl)) {
+            if (isMediaUrl(candidate) && !looksLikeImageUrl(candidate) && !isPreviewMediaUrl(candidate)) {
+                addUnique(candidates, candidate);
+            }
+        }
+        candidates = prioritizeManifestCandidates(dedupeMediaCandidates(candidates));
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return new SiteMediaResult("cdnsource", candidates.get(0), candidates, pageUrl);
     }
 
     private SiteMediaResult resolveNjavMedia(String pageUrl, String pageText) throws IOException {
@@ -5663,7 +5991,7 @@ final class DownloadEngine {
         String lowered = rawUrl.toLowerCase(Locale.US);
         return lowered.contains(".m3u8") || lowered.contains(".mp4") || lowered.contains(".mpd")
                 || lowered.contains(".webm") || lowered.contains(".m4v") || isYfspHlsManifest(rawUrl)
-                || isYoutubeHlsManifest(rawUrl);
+                || isYoutubeHlsManifest(rawUrl) || isStreamtapeMediaUrl(rawUrl);
     }
 
     private boolean isHlsUrl(String rawUrl) {

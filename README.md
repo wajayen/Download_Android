@@ -2,7 +2,7 @@
 
 `Download_Android` 是 Windows 版「下載者」的 Android 原生移植專案。目標是在手機上提供接近桌面版的影片搜尋、解析、下載、續傳、播放與診斷能力，同時維持 Android 友善的操作方式。
 
-目前 Android 版本：`0.180.0`（`versionCode 180`）。
+目前 Android 版本：`0.190.0`（`versionCode 190`）。
 
 ## App 特色
 
@@ -62,6 +62,16 @@
 - v0.178.0: AVJoy 影片頁新增下載引擎專用解析，依 Windows 版優先順序抽取 `hls4`、`hls2` 與其他 HLS 候選，保留 MP4/DASH fallback，並使用 AVJoy 站台根目錄作為下載 Referer。
 - v0.179.0: GoodAV17 / HoHoJ / GGJAV 新增下載引擎共用解析器，會先解析原頁，再抓播放器 iframe 與 GGJAV embed 頁，復用混淆媒體解碼與 `video-N.ggjav.com` 備援候選。
 - v0.180.0: HayAV 新增站台辨識、搜尋入口與下載引擎解析，支援 Windows 版同源的 `data-secret` Base64/XOR 解碼，展開 hglink/dhcplay/hgcloud embed 到 masukestin，並抽取實際 HLS/MP4/DASH 候選。
+- v0.181.0: Mixdrop 直接外部播放器網址新增下載引擎解析，會將 `/f/` 檔案頁正規化為 `/e/` 播放頁，抽取 `wurl` HLS/MP4/DASH 候選並保留播放頁 Referer。
+- v0.182.0: Dood 系列直接外部播放器網址新增下載引擎解析，會追蹤頁面中的 `/pass_md5/` 短效端點，抽取 Dood/CDN 真實 HLS/MP4/DASH 候選並保留原播放頁 Referer。
+- v0.183.0: Dood 系列 `/pass_md5/` 回應若只提供媒體前綴，Android 會依播放器頁的 `token`/`expiry` 組出短效最終 URL，提升 Dood 類外部來源成功率。
+- v0.184.0: Streamtape/VOE 類外部播放器新增站台辨識與下載引擎解析，會抽取 Streamtape `/get_video?...` HTTP 媒體連結，避免無副檔名下載 URL 被誤判為 HLS。
+- v0.185.0: Filemoon/Streamwish/Filelions/Embedrise/Embedgram/Vidoza/Tapewithadblock 類外部播放器新增站台辨識與第一層下載引擎解析，會抽取已展開的 HLS/MP4/DASH 媒體候選。
+- v0.186.0: StreamSB/WatchSB/SBEmbed/SBFull/NinjaStream 類外部播放器新增站台辨識與第一層下載引擎解析，會抽取已展開的 HLS/MP4/DASH 媒體候選。
+- v0.187.0: AsianClub/FileOne/mmfl/mmsw/mm984/mmsi/mmvh 類外部備援播放器新增站台辨識與第一層下載引擎解析，補齊 Windows 版常見慢速外部來源清單中的剩餘鏡像站。
+- v0.188.0: xluuss/lzcdn/subokk/ijycnd/huyall/qsstvw/gsuus/hhuus/jisuzyv/bfllvip/taopianplay1 類 MacCMS/CDN 播放域新增站台辨識與第一層下載引擎解析。
+- v0.189.0: phimgood/ppqrrs/qqqrst/vodcnd/ryplay/ryiplay/yzzy/hhiklm/jisuziyuanbf/dytt/modujx/jisutian 類 Gimy/劇站播放域納入 MacCMS/CDN 來源辨識與第一層解析。
+- v0.190.0: bfvvs/surrit/oag7h 類 Gimy/NNYY/Xiaoya 常見 HLS 播放域納入 MacCMS/CDN 來源辨識與第一層解析，並於本版同步 GitHub Release。
 
 ## 下載功能
 
