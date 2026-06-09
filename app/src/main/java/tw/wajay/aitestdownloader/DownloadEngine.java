@@ -735,11 +735,13 @@ final class DownloadEngine {
         }
         List<String> urls = new ArrayList<>();
         List<String> labels = new ArrayList<>();
+        List<String> referers = new ArrayList<>();
         for (VideoSearchResolver.Result result : results) {
             urls.add(result.url);
             labels.add(result.title);
+            referers.add(result.refererUrl);
         }
-        callback.onResolved("search", results.get(0).url, urls, labels);
+        callback.onResolved("search", results.get(0).url, urls, labels, referers);
 
         IOException lastError = null;
         for (int i = 0; i < results.size(); i++) {
@@ -4602,6 +4604,20 @@ final class DownloadEngine {
             connection.setRequestProperty("Range", "bytes=" + existing + "-");
         }
         int code = connection.getResponseCode();
+        if (existing > 0L && code == 416) {
+            callback.onStatus(context.getString(R.string.engine_http_resume_invalid_restarting));
+            connection.disconnect();
+            if (part.exists()) {
+                part.delete();
+            }
+            if (state.exists()) {
+                state.delete();
+            }
+            existing = 0L;
+            saveHttpState(state, rawUrl);
+            connection = open(rawUrl, refererUrl);
+            code = connection.getResponseCode();
+        }
         if (code >= HttpURLConnection.HTTP_BAD_REQUEST) {
             throw httpStatusException(connection, rawUrl, code);
         }
@@ -6395,7 +6411,7 @@ final class DownloadEngine {
 
     private int loadHlsCheckpoint(File checkpoint, HlsPlaylist playlist, File part) {
         if (!playlist.resumable) {
-            checkpoint.delete();
+            deleteCheckpointAndPart(checkpoint, part);
             return 0;
         }
         if (!checkpoint.exists() || !part.exists() || part.length() <= 0L) {
@@ -6405,15 +6421,22 @@ final class DownloadEngine {
         try (InputStream input = new java.io.FileInputStream(checkpoint)) {
             props.load(input);
             String manifestUrl = props.getProperty("manifestUrl", "");
+            String firstSegment = props.getProperty("firstSegment", "");
+            String lastSegment = props.getProperty("lastSegment", "");
             int completed = Integer.parseInt(props.getProperty("completed", "0"));
             int segmentCount = Integer.parseInt(props.getProperty("segmentCount", "0"));
-            if (playlist.manifestUrl.equals(manifestUrl) && segmentCount == playlist.segments.size() && completed > 0 && completed < playlist.segments.size()) {
+            if (playlist.manifestUrl.equals(manifestUrl)
+                    && hlsSegmentFingerprint(playlist, 0).equals(firstSegment)
+                    && hlsSegmentFingerprint(playlist, playlist.segments.size() - 1).equals(lastSegment)
+                    && segmentCount == playlist.segments.size()
+                    && completed > 0
+                    && completed < playlist.segments.size()) {
                 return completed;
             }
         } catch (Exception ignored) {
             // Invalid checkpoint: restart safely.
         }
-        checkpoint.delete();
+        deleteCheckpointAndPart(checkpoint, part);
         return 0;
     }
 
@@ -6424,11 +6447,41 @@ final class DownloadEngine {
         }
         Properties props = new Properties();
         props.setProperty("manifestUrl", playlist.manifestUrl);
+        props.setProperty("firstSegment", hlsSegmentFingerprint(playlist, 0));
+        props.setProperty("lastSegment", hlsSegmentFingerprint(playlist, playlist.segments.size() - 1));
         props.setProperty("segmentCount", String.valueOf(playlist.segments.size()));
         props.setProperty("completed", String.valueOf(completed));
         try (FileOutputStream output = new FileOutputStream(checkpoint, false)) {
             props.store(output, "HLS download checkpoint");
         }
+    }
+
+    private String hlsSegmentFingerprint(HlsPlaylist playlist, int index) {
+        if (playlist == null || playlist.segments == null || index < 0 || index >= playlist.segments.size()) {
+            return "";
+        }
+        HlsSegment segment = playlist.segments.get(index);
+        if (segment == null) {
+            return "";
+        }
+        String map = segment.map == null ? "" : hlsValue(segment.map.uri) + "|" + hlsValue(segment.map.byteRange);
+        String key = segment.key == null ? "" : hlsValue(segment.key.uri) + "|" + hlsBytes(segment.key.iv);
+        return hlsValue(segment.url) + "|" + hlsValue(segment.byteRange) + "|" + map + "|" + key;
+    }
+
+    private String hlsValue(String value) {
+        return value == null ? "" : value;
+    }
+
+    private String hlsBytes(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) {
+            builder.append(String.format(Locale.US, "%02x", value & 0xff));
+        }
+        return builder.toString();
     }
 
     private int loadDashCheckpoint(File checkpoint, DashPlan plan, File part) {
@@ -6440,10 +6493,18 @@ final class DownloadEngine {
             props.load(input);
             String manifestUrl = props.getProperty("manifestUrl", "");
             String representationId = props.getProperty("representationId", "");
+            String initUrl = props.getProperty("initUrl", "");
+            String initRange = props.getProperty("initRange", "");
+            String firstSegment = props.getProperty("firstSegment", "");
+            String lastSegment = props.getProperty("lastSegment", "");
             int completed = Integer.parseInt(props.getProperty("completed", "0"));
             int segmentCount = Integer.parseInt(props.getProperty("segmentCount", "0"));
             if (plan.manifestUrl.equals(manifestUrl)
                     && plan.representationId.equals(representationId)
+                    && dashValue(plan.initUrl).equals(initUrl)
+                    && dashValue(plan.initRange).equals(initRange)
+                    && dashSegmentFingerprint(plan, 0).equals(firstSegment)
+                    && dashSegmentFingerprint(plan, plan.segments.size() - 1).equals(lastSegment)
                     && segmentCount == plan.segments.size()
                     && completed > 0
                     && completed < plan.segments.size()) {
@@ -6452,19 +6513,47 @@ final class DownloadEngine {
         } catch (Exception ignored) {
             // Invalid checkpoint: restart safely.
         }
-        checkpoint.delete();
+        deleteCheckpointAndPart(checkpoint, part);
         return 0;
+    }
+
+    private void deleteCheckpointAndPart(File checkpoint, File part) {
+        if (checkpoint != null && checkpoint.exists()) {
+            checkpoint.delete();
+        }
+        if (part != null && part.exists()) {
+            part.delete();
+        }
     }
 
     private void saveDashCheckpoint(File checkpoint, DashPlan plan, int completed) throws IOException {
         Properties props = new Properties();
         props.setProperty("manifestUrl", plan.manifestUrl);
         props.setProperty("representationId", plan.representationId);
+        props.setProperty("initUrl", dashValue(plan.initUrl));
+        props.setProperty("initRange", dashValue(plan.initRange));
+        props.setProperty("firstSegment", dashSegmentFingerprint(plan, 0));
+        props.setProperty("lastSegment", dashSegmentFingerprint(plan, plan.segments.size() - 1));
         props.setProperty("segmentCount", String.valueOf(plan.segments.size()));
         props.setProperty("completed", String.valueOf(completed));
         try (FileOutputStream output = new FileOutputStream(checkpoint, false)) {
             props.store(output, "DASH download checkpoint");
         }
+    }
+
+    private String dashSegmentFingerprint(DashPlan plan, int index) {
+        if (plan == null || plan.segments == null || index < 0 || index >= plan.segments.size()) {
+            return "";
+        }
+        DashSegment segment = plan.segments.get(index);
+        if (segment == null) {
+            return "";
+        }
+        return dashValue(segment.url) + "|" + dashValue(segment.byteRange);
+    }
+
+    private String dashValue(String value) {
+        return value == null ? "" : value;
     }
 
     private static final class HlsPlaylist {

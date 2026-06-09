@@ -152,6 +152,7 @@
     <string name="engine_media_validated">完了したメディアファイルを検証しました</string>
     <string name="engine_http_content_type_validated">HTTP メディア Content-Type を検証しました</string>
     <string name="engine_http_size_validated">HTTP ダウンロードサイズを検証しました</string>
+    <string name="engine_http_resume_invalid_restarting">HTTP 再開が失効しました。最初から再開します</string>
     <string name="action_set_download_directory">ダウンロード先を設定</string>
     <string name="toast_download_directory_set">ダウンロード先を設定しました</string>
     <string name="toast_download_directory_picker_failed">フォルダー選択を開けませんでした</string>

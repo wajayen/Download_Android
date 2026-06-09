@@ -152,6 +152,7 @@
     <string name="engine_media_validated">已驗證完成媒體檔</string>
     <string name="engine_http_content_type_validated">已驗證 HTTP 媒體內容類型</string>
     <string name="engine_http_size_validated">已驗證 HTTP 下載大小</string>
+    <string name="engine_http_resume_invalid_restarting">HTTP 續傳已失效，重新下載</string>
     <string name="action_set_download_directory">設定下載目錄</string>
     <string name="toast_download_directory_set">已設定下載目錄</string>
     <string name="toast_download_directory_picker_failed">無法開啟資料夾選擇器</string>

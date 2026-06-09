@@ -152,6 +152,7 @@
     <string name="engine_media_validated">Validated completed media file</string>
     <string name="engine_http_content_type_validated">Validated HTTP media content type</string>
     <string name="engine_http_size_validated">Validated HTTP download size</string>
+    <string name="engine_http_resume_invalid_restarting">HTTP resume expired; restarting download</string>
     <string name="action_set_download_directory">Set Download Directory</string>
     <string name="toast_download_directory_set">Download directory set</string>
     <string name="toast_download_directory_picker_failed">Could not open folder picker</string>

@@ -15,6 +15,7 @@ final class TaskStore {
     static final String PREFS = "download_tasks";
     private static final String KEY_TASKS = "tasks_json";
     private static final int MAX_TASKS = 50;
+    private static final int MAX_STORED_CANDIDATES = 24;
 
     static final String STATUS_QUEUED = "queued";
     static final String STATUS_RUNNING = "running";
@@ -166,7 +167,7 @@ final class TaskStore {
     }
 
     synchronized void resolved(String id, String sourceSite, String targetUrl, List<String> candidates, List<String> candidateLabels, List<String> candidateReferers) {
-        int candidateCount = candidates == null ? 0 : candidates.size();
+        CandidateArrays candidateArrays = candidateArrays(candidates, candidateLabels, candidateReferers);
         JSONArray tasks = loadTasks();
         for (int i = 0; i < tasks.length(); i++) {
             JSONObject task = tasks.optJSONObject(i);
@@ -176,15 +177,15 @@ final class TaskStore {
             try {
                 task.put("sourceSite", sourceSite == null ? "" : sourceSite);
                 task.put("resolvedUrl", targetUrl == null ? "" : targetUrl);
-                task.put("candidateCount", candidateCount);
-                task.put("candidateUrls", candidateArray(candidates));
-                if (candidateLabels != null && !candidateLabels.isEmpty()) {
-                    task.put("candidateLabels", candidateArray(candidateLabels));
+                task.put("candidateCount", candidateArrays.urls.length());
+                task.put("candidateUrls", candidateArrays.urls);
+                if (candidateArrays.hasLabels) {
+                    task.put("candidateLabels", candidateArrays.labels);
                 } else {
                     task.remove("candidateLabels");
                 }
-                if (candidateReferers != null && !candidateReferers.isEmpty()) {
-                    task.put("candidateReferers", candidateArray(candidateReferers));
+                if (candidateArrays.hasReferers) {
+                    task.put("candidateReferers", candidateArrays.referers);
                 } else {
                     task.remove("candidateReferers");
                 }
@@ -244,8 +245,10 @@ final class TaskStore {
             try {
                 task.put("status", STATUS_QUEUED);
                 task.put("message", text(R.string.task_message_retry));
+                updateGenericFileName(task, firstNonEmpty(task.optString("resolvedUrl", ""), task.optString("url", "")));
                 task.put("downloaded", 0L);
                 task.put("total", -1L);
+                task.put("output", "");
                 task.put("error", "");
                 task.remove("failedCandidateUrls");
                 task.put("playbackStarted", false);
@@ -281,6 +284,7 @@ final class TaskStore {
                 task.put("status", STATUS_QUEUED);
                 task.put("message", text(R.string.task_message_alternate));
                 task.put("resolvedUrl", nextUrl);
+                updateGenericFileName(task, nextUrl);
                 task.put("downloaded", 0L);
                 task.put("total", -1L);
                 task.put("output", "");
@@ -332,6 +336,7 @@ final class TaskStore {
                 task.put("status", STATUS_QUEUED);
                 task.put("message", text(R.string.task_message_alternate));
                 task.put("resolvedUrl", nextUrl);
+                updateGenericFileName(task, nextUrl);
                 task.put("downloaded", 0L);
                 task.put("total", -1L);
                 task.put("output", "");
@@ -406,6 +411,7 @@ final class TaskStore {
                 task.put("status", STATUS_QUEUED);
                 task.put("message", text(R.string.task_message_selected_source));
                 task.put("resolvedUrl", selectedUrl);
+                updateGenericFileName(task, selectedUrl);
                 task.put("downloaded", 0L);
                 task.put("total", -1L);
                 task.put("output", "");
@@ -566,19 +572,47 @@ final class TaskStore {
         return builder.toString();
     }
 
-    private JSONArray candidateArray(List<String> candidates) {
-        JSONArray array = new JSONArray();
+    private CandidateArrays candidateArrays(List<String> candidates, List<String> labels, List<String> referers) {
+        CandidateArrays arrays = new CandidateArrays();
         if (candidates == null) {
-            return array;
+            return arrays;
         }
-        int limit = Math.min(12, candidates.size());
+        int limit = Math.min(MAX_STORED_CANDIDATES, candidates.size());
         for (int i = 0; i < limit; i++) {
             String candidate = candidates.get(i);
-            if (candidate != null && !candidate.trim().isEmpty()) {
-                array.put(candidate);
+            String url = candidate == null ? "" : candidate.trim();
+            if (url.isEmpty()) {
+                continue;
+            }
+            String label = listValueAt(labels, i);
+            String referer = listValueAt(referers, i);
+            arrays.urls.put(url);
+            arrays.labels.put(label);
+            arrays.referers.put(referer);
+            if (!label.isEmpty()) {
+                arrays.hasLabels = true;
+            }
+            if (!referer.isEmpty()) {
+                arrays.hasReferers = true;
             }
         }
-        return array;
+        return arrays;
+    }
+
+    private String listValueAt(List<String> values, int index) {
+        if (values == null || index < 0 || index >= values.size()) {
+            return "";
+        }
+        String value = values.get(index);
+        return value == null ? "" : value.trim();
+    }
+
+    private static final class CandidateArrays {
+        final JSONArray urls = new JSONArray();
+        final JSONArray labels = new JSONArray();
+        final JSONArray referers = new JSONArray();
+        boolean hasLabels;
+        boolean hasReferers;
     }
 
     private String nextCandidateUrl(JSONObject task, JSONArray candidateUrls) {
@@ -653,6 +687,26 @@ final class TaskStore {
             }
         }
         return firstNonEmpty(existingReferer, previousUrl);
+    }
+
+    private void updateGenericFileName(JSONObject task, String candidateUrl) throws JSONException {
+        String current = FileNames.sanitize(task.optString("fileName", ""));
+        if (!isGenericFileName(current)) {
+            return;
+        }
+        String inferred = FileNames.choose(Uri.parse(candidateUrl == null ? "" : candidateUrl), "");
+        if (!isGenericFileName(inferred)) {
+            task.put("fileName", inferred);
+        }
+    }
+
+    private boolean isGenericFileName(String fileName) {
+        String normalized = fileName == null ? "" : fileName.trim().toLowerCase(Locale.US);
+        return normalized.isEmpty()
+                || "download".equals(normalized)
+                || "download.bin".equals(normalized)
+                || "video".equals(normalized)
+                || "video.mp4".equals(normalized);
     }
 
     private String candidateLabel(int index, String marker, String sourceSite, String url, String resolverLabel) {

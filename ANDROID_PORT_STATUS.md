@@ -28,6 +28,16 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Alternate media-source retries now persist matching Referer values for the remaining candidate subset, and task storage clears stale candidate labels or Referers when a newer resolver update omits them.
 - Manual retry, next-source retry, and explicit source selection now clear stale failed-candidate state so a fresh attempt can re-evaluate all candidates instead of inheriting the previous automatic-fallback failure set.
 - Retry, source-switch, and automatic fallback paths now reset the Play after 50 MB launch state so a new candidate can trigger playback again instead of inheriting the prior attempt's playback-started flag.
+- Persisted source-candidate capacity increased from 12 to 24 entries, and candidate labels/Referers now preserve blank positional slots so they stay aligned with candidate URLs during source review and retry.
+- Candidate URL, label, and Referer arrays are now written from one synchronized pass, storing labels and Referers only for valid URL rows and reporting the persisted candidate count instead of the raw resolver list size.
+- Initial search-result candidate persistence now stores each result's search-page Referer immediately, so source review and pre-resolution retries can keep the correct search context.
+- Source-switch retries now refresh generic filenames such as `download.bin` or `video.mp4` from the selected candidate URL, keeping queue labels, notifications, and output names closer to the actual source.
+- Retrying a failed or cancelled task now clears the previous output path together with progress and error state, preventing stale output metadata from leaking into the new attempt.
+- Retrying a failed or cancelled task now also refreshes generic filenames from the current resolved URL or task URL, matching source-switch retry filename behavior.
+- HTTP resume now handles expired or oversized partial downloads that return `416 Range Not Satisfiable` by deleting the stale `.part` and `.httpstate` files and restarting the HTTP download automatically.
+- HLS and DASH resume now delete stale `.part` files together with invalid checkpoints, making restarted segmented downloads start from a clean partial-file state.
+- DASH checkpoints now include init URL/range plus first and last segment fingerprints, preventing resume from appending to stale `.part` files when a manifest URL returns a changed representation with the same segment count.
+- HLS checkpoints now include first and last segment fingerprints, including byte-range, init map, key URL, and key IV, preventing resume from appending to stale `.part` files when a manifest URL returns changed segment content with the same segment count.
 - Overflow settings now hides the system-default and four-language selector entries and instead exposes a download-directory picker backed by Android's system folder selection.
 - Completed outputs now export to the user-selected download directory when one is configured, falling back to public Downloads/AI Test Downloader otherwise.
 - Completed-output export now falls back to public Downloads/AI Test Downloader if the selected download directory becomes unavailable or its persisted Android permission is revoked.
