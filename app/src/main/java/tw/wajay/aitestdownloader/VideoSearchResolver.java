@@ -43,6 +43,9 @@ final class VideoSearchResolver {
     private static final Pattern IMAGE_SRCSET = Pattern.compile(
             "<img\\b[^>]+(?:srcset|data-srcset)=[\"']([^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern IMAGE_ATTR_URL = Pattern.compile(
+            "\\b(?:src|poster|data-src|data-original|data-lazy-src|data-thumb|data-thumbnail|data-image|data-cover|data-poster|data-background-image)=[\"']([^\"']+)[\"']",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern STYLE_IMAGE = Pattern.compile(
             "(?:background|background-image)\\s*:\\s*url\\((['\"]?)(.*?)\\1\\)",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
@@ -58,6 +61,12 @@ final class VideoSearchResolver {
     private static final Pattern TITLE_ATTR = Pattern.compile(
             "\\b(?:title|alt|aria-label|data-title|data-name)=[\"']([^\"']{2,160})[\"']",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern MOVIEFFM_RESULT_ITEM = Pattern.compile(
+            "<div\\b[^>]*class=[\"'][^\"']*result-item[^\"']*[\"'][^>]*>(.*?)</article>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern MOVIEFFM_RESULT_TITLE = Pattern.compile(
+            "<div\\b[^>]*class=[\"'][^\"']*title[^\"']*[\"'][^>]*>\\s*<a[^>]+href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private VideoSearchResolver() {
     }
 
@@ -343,6 +352,7 @@ final class VideoSearchResolver {
     private static List<RankedResult> extractSearchPageLinks(String html, String baseUrl, String sourceLabel, String query, int depth) {
         List<RankedResult> ranked = new ArrayList<>();
         Set<String> localSeen = new LinkedHashSet<>();
+        collectMovieFfmSearchCards(ranked, localSeen, html, baseUrl, sourceLabel, query);
         Matcher matcher = LINK.matcher(html == null ? "" : html);
         while (matcher.find() && ranked.size() < SITE_SEARCH_LINK_LIMIT * 3) {
             String url = normalizeResultUrl(matcher.group(1), baseUrl);
@@ -358,7 +368,7 @@ final class VideoSearchResolver {
             }
             String nearbyHtml = htmlWindow(html, matcher.start(), matcher.end());
             String cardHtml = resultCardHtml(html, matcher.start(), matcher.end());
-            String title = firstNonEmptyTitle(cleanTitle(matcher.group(2)), extractNearbyTitle(cardHtml), extractNearbyTitle(nearbyHtml), titleFromUrl(url));
+            String title = firstNonEmptyTitle(extractNearbyTitle(cardHtml), extractNearbyTitle(nearbyHtml), cleanTitle(matcher.group(2)), titleFromUrl(url));
             int score = resultMatchScore(title, url, query);
             String thumbnailUrl = firstNonEmptyTitle(extractThumbnailUrl(cardHtml, baseUrl), extractThumbnailUrl(nearbyHtml, baseUrl));
             ranked.add(new RankedResult(url, sourceLabel + ": " + title, score, thumbnailUrl, baseUrl));
@@ -394,6 +404,33 @@ final class VideoSearchResolver {
             return new ArrayList<>(ranked.subList(0, visibleLimit));
         }
         return ranked;
+    }
+
+    private static void collectMovieFfmSearchCards(
+            List<RankedResult> ranked,
+            Set<String> seen,
+            String html,
+            String baseUrl,
+            String sourceLabel,
+            String query) {
+        if (baseUrl == null || !baseUrl.toLowerCase(Locale.US).contains("movieffm.")) {
+            return;
+        }
+        Matcher cardMatcher = MOVIEFFM_RESULT_ITEM.matcher(html == null ? "" : html);
+        while (cardMatcher.find() && ranked.size() < SITE_SEARCH_LINK_LIMIT * 3) {
+            String cardHtml = cardMatcher.group(1);
+            Matcher titleMatcher = MOVIEFFM_RESULT_TITLE.matcher(cardHtml);
+            if (!titleMatcher.find()) {
+                continue;
+            }
+            String url = normalizeResultUrl(titleMatcher.group(1), baseUrl);
+            if (url.isEmpty() || !seen.add(url) || !looksLikeSearchResultPath(url)) {
+                continue;
+            }
+            String title = firstNonEmptyTitle(cleanTitle(titleMatcher.group(2)), extractNearbyTitle(cardHtml), titleFromUrl(url));
+            String thumbnailUrl = extractThumbnailUrl(cardHtml, baseUrl);
+            ranked.add(new RankedResult(url, sourceLabel + ": " + title, resultMatchScore(title, url, query), thumbnailUrl, baseUrl));
+        }
     }
 
     private static void appendNestedListingResults(
@@ -653,6 +690,13 @@ final class VideoSearchResolver {
         while (matcher.find()) {
             String raw = matcher.group(1);
             String url = normalizeResultUrl(raw, baseUrl);
+            if (looksLikeThumbnailUrl(url, false)) {
+                return url;
+            }
+        }
+        Matcher attrMatcher = IMAGE_ATTR_URL.matcher(html == null ? "" : html);
+        while (attrMatcher.find()) {
+            String url = normalizeResultUrl(attrMatcher.group(1), baseUrl);
             if (looksLikeThumbnailUrl(url, false)) {
                 return url;
             }

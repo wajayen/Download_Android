@@ -681,7 +681,7 @@ public final class MainActivity extends Activity {
     private String displaySearchSite(VideoSearchResolver.Result result) {
         String site = result == null || result.sourceSite == null ? "" : result.sourceSite.trim();
         if (!site.isEmpty() && !"generic".equals(site)) {
-            return site;
+            return displaySourceSiteName(site);
         }
         try {
             String host = Uri.parse(result.url).getHost();
@@ -692,6 +692,35 @@ public final class MainActivity extends Activity {
             // Fall through to the localized unknown-site label.
         }
         return getString(R.string.search_result_site_unknown);
+    }
+
+    private String displaySourceSiteName(String site) {
+        String value = site == null ? "" : site.trim().toLowerCase(Locale.US);
+        if ("movieffm".equals(value)) return "MovieFFM";
+        if ("xiaoyakankan".equals(value)) return "XiaoyaKankan";
+        if ("gimy".equals(value)) return "Gimy";
+        if ("dramasq".equals(value)) return "DramaSQ";
+        if ("olevod".equals(value)) return "Olevod";
+        if ("3kor".equals(value)) return "3KOR";
+        if ("nnyy".equals(value)) return "NNYY";
+        if ("777tv".equals(value)) return "777TV";
+        if ("ikanbot".equals(value)) return "Ikanbot";
+        if ("yfsp".equals(value)) return "YFSP";
+        if ("iqiyi".equals(value)) return "iQIYI";
+        if ("avjoy".equals(value)) return "AVJoy";
+        if ("avbebe".equals(value)) return "AVBebe";
+        if ("bestjavporn".equals(value)) return "BestJavPorn";
+        if ("javdock".equals(value)) return "JavDock";
+        if ("javfilms".equals(value)) return "JavFilms";
+        if ("tinyavideo".equals(value)) return "TinyAVideo";
+        if ("goodav17".equals(value)) return "GoodAV17";
+        if ("hohoj".equals(value)) return "HoHoJ";
+        if ("hayav".equals(value)) return "HayAV";
+        if ("ggjav".equals(value)) return "GGJAV";
+        if ("tktube".equals(value)) return "TKTube";
+        if ("18jav".equals(value)) return "18JAV";
+        if ("85xvideo".equals(value)) return "85xVideo";
+        return site.trim();
     }
 
     private void loadThumbnail(ImageView target, String rawUrl, String refererUrl) {

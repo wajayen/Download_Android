@@ -78,6 +78,8 @@ This Android app is a native port track for the desktop downloader in `downloade
 - Android search result relevance filtering now runs after page-title/thumbnail enrichment instead of before it, so valid video rows are not dropped just because the search card lacked usable title text.
 - Android search now follows the Windows downloader search pipeline more closely: direct site-search pages and DuckDuckGo candidates are enriched from concrete video pages, zero-match fallbacks are no longer shown, and final rows are ranked by exact title/url match plus Windows-style site priority.
 - Android MovieFFM search now checks the current `movieffm.me` site-search page before the older `movieffm.net` page, recognizes current `/tv/`, `/movie/`, and `/anime/` result paths as concrete video pages, and keeps those selected pages on the MovieFFM resolver path.
+- Android MovieFFM search now parses `result-item` cards directly so thumbnail anchors such as the category label do not hide the real title anchor; verified with `縱橫四海` returning title, concrete URL, thumbnail, and MovieFFM source-site metadata.
+- Android search result rows now display friendly source-site names such as `MovieFFM` instead of internal lowercase resolver identifiers.
 - Android search query detection now treats pasted media filenames by their stem, matching the desktop behavior for inputs such as `title.mp4`, `code.m3u8`, or local-looking paths.
 - Android video search now seeds supported site-search URLs before falling back to search-engine results, improving reliability for MovieFFM, Gimy/Xiaoya/MacCMS-like sites, and common JAV site clusters.
 - Android video search detects JAV-style codes and prioritizes JAV direct-code URLs plus JAV site-search candidates before general video sites.
