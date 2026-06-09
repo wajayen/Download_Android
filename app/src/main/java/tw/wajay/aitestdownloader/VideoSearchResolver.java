@@ -355,7 +355,7 @@ final class VideoSearchResolver {
             String cardHtml = resultCardHtml(html, matcher.start(), matcher.end());
             String title = firstNonEmptyTitle(cleanTitle(matcher.group(2)), extractNearbyTitle(cardHtml), extractNearbyTitle(nearbyHtml), titleFromUrl(url));
             int score = resultMatchScore(title, url, query);
-            if (score < 0) {
+            if (score <= 0) {
                 continue;
             }
             String thumbnailUrl = firstNonEmptyTitle(extractThumbnailUrl(cardHtml, baseUrl), extractThumbnailUrl(nearbyHtml, baseUrl));
@@ -375,7 +375,7 @@ final class VideoSearchResolver {
                 continue;
             }
             int score = resultMatchScore("", url, query);
-            if (score < 0) {
+            if (score <= 0) {
                 continue;
             }
             String nearbyHtml = htmlWindow(html, dataMatcher.start(), dataMatcher.end());
@@ -430,7 +430,15 @@ final class VideoSearchResolver {
                 addNestedListingResults(url, query, seen, out);
                 continue;
             }
-            addResult(url, cleanTitle(matcher.group(2)), "", seen, out);
+            String title = cleanTitle(matcher.group(2));
+            if (resultMatchScore(title, url, query) <= 0) {
+                continue;
+            }
+            RankedResult enriched = enrichSearchResult(new RankedResult(url, title, 1), "");
+            if (resultMatchScore(enriched.title, enriched.url, query) <= 0) {
+                continue;
+            }
+            addResult(enriched.url, enriched.title, "", seen, out, enriched.thumbnailUrl, enriched.thumbnailRefererUrl);
         }
     }
 
@@ -447,6 +455,9 @@ final class VideoSearchResolver {
                     return;
                 }
                 RankedResult enriched = enrichSearchResult(result, listingUrl);
+                if (resultMatchScore(enriched.title, enriched.url, query) <= 0) {
+                    continue;
+                }
                 addResult(enriched.url, enriched.title, listingUrl, seen, out, enriched.thumbnailUrl, enriched.thumbnailRefererUrl);
             }
         } catch (IOException ignored) {
@@ -463,7 +474,12 @@ final class VideoSearchResolver {
     }
 
     private static void addResult(String url, String title, String refererUrl, Set<String> seen, List<Result> out, String thumbnailUrl, String thumbnailRefererUrl) {
-        if (url == null || url.isEmpty() || isNonVideoListingUrl(url) || !isSupportedCandidate(url) || !seen.add(url)) {
+        if (url == null
+                || url.isEmpty()
+                || isNonVideoListingUrl(url)
+                || looksLikeListingTitle(title)
+                || !isSupportedCandidate(url)
+                || !seen.add(url)) {
             return;
         }
         out.add(new Result(url, cleanTitle(title), MediaResolver.sourceSite(url), refererUrl, thumbnailUrl, thumbnailRefererUrl));
@@ -651,6 +667,36 @@ final class VideoSearchResolver {
                 && !lowered.equals("watch")
                 && !lowered.equals("more")
                 && !lowered.contains("javascript:");
+    }
+
+    private static boolean looksLikeListingTitle(String title) {
+        String value = cleanTitle(title == null ? "" : title).toLowerCase(Locale.US);
+        if (value.isEmpty()) {
+            return false;
+        }
+        return value.equals("category")
+                || value.equals("categories")
+                || value.equals("tag")
+                || value.equals("tags")
+                || value.equals("genre")
+                || value.equals("genres")
+                || value.equals("search")
+                || value.equals("list")
+                || value.equals("channel")
+                || value.equals("channels")
+                || value.equals("series")
+                || value.equals("studio")
+                || value.equals("studios")
+                || value.equals("actress")
+                || value.equals("actresses")
+                || value.equals("actor")
+                || value.equals("actors")
+                || value.contains("search results")
+                || value.contains("category:")
+                || value.contains("分類")
+                || value.contains("類別")
+                || value.contains("タグ")
+                || value.contains("カテゴリー");
     }
 
     private static boolean looksLikeCodeOnlyTitle(String title) {
@@ -867,6 +913,9 @@ final class VideoSearchResolver {
         String[] listingMarkers = new String[]{
                 "/category/", "/categories/", "/cat/", "/tag/", "/tags/",
                 "/genre/", "/genres/", "/type/", "/types/", "/label/",
+                "/channel/", "/channels/", "/series/", "/studio/", "/studios/",
+                "/maker/", "/makers/", "/actress/", "/actresses/", "/actor/", "/actors/",
+                "/pornstar/", "/pornstars/", "/models/", "/model/",
                 "/author/", "/page/", "/feed/", "/rss/", "/wp-",
                 "/search/", "/search.html", "/vodsearch/", "/vod/search",
                 "/vodtype/", "/vodshow/", "/vodlist/", "/list/", "/lists/",
@@ -878,7 +927,22 @@ final class VideoSearchResolver {
                 return true;
             }
         }
-        if (path.endsWith("/search") || path.endsWith("/category") || path.endsWith("/tag")) {
+        if (path.endsWith("/search")
+                || path.endsWith("/category")
+                || path.endsWith("/categories")
+                || path.endsWith("/tag")
+                || path.endsWith("/tags")
+                || path.endsWith("/genre")
+                || path.endsWith("/genres")
+                || path.endsWith("/channel")
+                || path.endsWith("/channels")
+                || path.endsWith("/series")
+                || path.endsWith("/studio")
+                || path.endsWith("/studios")
+                || path.endsWith("/actress")
+                || path.endsWith("/actresses")
+                || path.endsWith("/actor")
+                || path.endsWith("/actors")) {
             return true;
         }
         String[] searchParams = new String[]{
@@ -927,7 +991,7 @@ final class VideoSearchResolver {
                 score += 12;
             }
         }
-        return score > 0 ? score : 1;
+        return score;
     }
 
     private static String normalizeSearchText(String value) {
