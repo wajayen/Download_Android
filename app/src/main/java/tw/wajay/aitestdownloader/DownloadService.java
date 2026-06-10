@@ -67,7 +67,18 @@ public final class DownloadService extends Service {
         intent.putExtra(EXTRA_COOKIE_HEADER, cookieHeader == null ? "" : cookieHeader);
         intent.putExtra(EXTRA_HEADERS_JSON, headersJson == null ? "{}" : headersJson);
         intent.putExtra(EXTRA_PLAY_AFTER_THRESHOLD, playAfterThreshold);
+        Uri sharedUri = Uri.parse(url == null ? "" : url);
+        if (isLocalFileUri(sharedUri)) {
+            intent.setData(sharedUri);
+            intent.setClipData(ClipData.newUri(context.getContentResolver(), fileName == null ? "shared-file" : fileName, sharedUri));
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        }
         return intent;
+    }
+
+    private static boolean isLocalFileUri(Uri uri) {
+        String scheme = uri == null ? "" : uri.getScheme();
+        return "content".equalsIgnoreCase(scheme) || "file".equalsIgnoreCase(scheme);
     }
 
     static Intent cancelIntent(Context context) {

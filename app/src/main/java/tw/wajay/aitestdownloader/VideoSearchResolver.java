@@ -26,8 +26,9 @@ final class VideoSearchResolver {
     static final String SEARCH_HOST = "video";
 
     private static final int MAX_RESULTS = 24;
-    private static final int SITE_SEARCH_FETCH_LIMIT = 10;
-    private static final int SITE_SEARCH_LINK_LIMIT = 8;
+    private static final int TARGET_SEARCH_RESULTS = 12;
+    private static final int SITE_SEARCH_FETCH_LIMIT = 18;
+    private static final int SITE_SEARCH_LINK_LIMIT = 12;
     private static final Pattern DDG_RESULT = Pattern.compile(
             "<a[^>]+class=[\"'][^\"']*result__a[^\"']*[\"'][^>]+href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
@@ -38,19 +39,19 @@ final class VideoSearchResolver {
             "\\b(?:data-url|data-href|data-src|data-play|data-link|data-video|data-clipboard-text)=[\"']([^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern IMAGE_SRC = Pattern.compile(
-            "<(?:img|source|video)\\b[^>]+(?:src|poster|data-src|data-original|data-lazy-src|data-thumb|data-thumbnail|data-image|data-cover|data-poster|data-background-image)=[\"']([^\"']+)[\"']",
+            "<(?:img|source|video)\\b[^>]+(?:src|poster|data-src|data-original|data-original-src|data-lazy|data-lazy-src|data-src-large|data-preview|data-echo|data-bg|data-thumb|data-thumbnail|data-image|data-cover|data-poster|data-background-image)=[\"']([^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern IMAGE_SRCSET = Pattern.compile(
             "<img\\b[^>]+(?:srcset|data-srcset)=[\"']([^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern IMAGE_ATTR_URL = Pattern.compile(
-            "\\b(?:src|poster|data-src|data-original|data-lazy-src|data-thumb|data-thumbnail|data-image|data-cover|data-poster|data-background-image)=[\"']([^\"']+)[\"']",
+            "\\b(?:src|poster|data-src|data-original|data-original-src|data-lazy|data-lazy-src|data-src-large|data-preview|data-echo|data-bg|data-thumb|data-thumbnail|data-image|data-cover|data-poster|data-background-image)=[\"']([^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern STYLE_IMAGE = Pattern.compile(
             "(?:background|background-image)\\s*:\\s*url\\((['\"]?)(.*?)\\1\\)",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern JSON_IMAGE = Pattern.compile(
-            "[\"'](?:thumbnailUrl|thumbnail|thumb|image|imageUrl|poster|posterUrl|cover|coverUrl|pic|vod_pic)[\"']\\s*:\\s*[\"']([^\"']+)[\"']",
+            "[\"'](?:thumbnailUrl|thumbnail|thumb|image|imageUrl|poster|posterUrl|cover|coverUrl|cover_url|pic|vod_pic|img|imgUrl|preview|previewUrl)[\"']\\s*:\\s*[\"']([^\"']+)[\"']",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern META_IMAGE = Pattern.compile(
             "<meta\\b[^>]+(?:property|name)=[\"'](?:og:image|twitter:image|twitter:image:src)[\"'][^>]+content=[\"']([^\"']+)[\"']|<meta\\b[^>]+content=[\"']([^\"']+)[\"'][^>]+(?:property|name)=[\"'](?:og:image|twitter:image|twitter:image:src)[\"']",
@@ -177,18 +178,16 @@ final class VideoSearchResolver {
         Set<String> seen = new LinkedHashSet<>();
         List<Result> results = new ArrayList<>();
         addDirectSiteSearchResults(cleanQuery, seen, results);
-        if (results.size() >= 3) {
-            rankSearchResults(results, cleanQuery);
-            return results;
-        }
-        for (String searchQuery : searchQueries(cleanQuery)) {
-            try {
-                collectDuckDuckGoResults(searchQuery, seen, results);
-            } catch (IOException ignored) {
-                // Site-search candidates above still let the engine try supported sites offline from search-engine availability.
-            }
-            if (results.size() >= MAX_RESULTS) {
-                break;
+        if (results.size() < TARGET_SEARCH_RESULTS) {
+            for (String searchQuery : searchQueries(cleanQuery)) {
+                try {
+                    collectDuckDuckGoResults(searchQuery, seen, results);
+                } catch (IOException ignored) {
+                    // Site-search candidates above still let the engine try supported sites offline from search-engine availability.
+                }
+                if (results.size() >= MAX_RESULTS) {
+                    break;
+                }
             }
         }
         rankSearchResults(results, cleanQuery);
@@ -212,7 +211,7 @@ final class VideoSearchResolver {
             if (fetchedTemplates < SITE_SEARCH_FETCH_LIMIT) {
                 collectSiteSearchResults(value, template[0], query, seen, out);
                 fetchedTemplates++;
-                if (out.size() >= SITE_SEARCH_LINK_LIMIT) {
+                if (out.size() >= TARGET_SEARCH_RESULTS) {
                     return;
                 }
             }
@@ -771,14 +770,14 @@ final class VideoSearchResolver {
         while (matcher.find()) {
             String raw = matcher.group(1);
             String url = normalizeResultUrl(raw, baseUrl);
-            if (looksLikeThumbnailUrl(url, false)) {
+            if (looksLikeThumbnailUrl(url, true)) {
                 return url;
             }
         }
         Matcher attrMatcher = IMAGE_ATTR_URL.matcher(html == null ? "" : html);
         while (attrMatcher.find()) {
             String url = normalizeResultUrl(attrMatcher.group(1), baseUrl);
-            if (looksLikeThumbnailUrl(url, false)) {
+            if (looksLikeThumbnailUrl(url, true)) {
                 return url;
             }
         }
@@ -947,7 +946,7 @@ final class VideoSearchResolver {
     }
 
     private static String normalizeResultUrl(String raw) {
-        String value = htmlDecode(raw == null ? "" : raw.trim());
+        String value = unescapeScriptString(htmlDecode(raw == null ? "" : raw.trim()));
         if (value.startsWith("//")) {
             value = "https:" + value;
         }
@@ -956,7 +955,7 @@ final class VideoSearchResolver {
     }
 
     private static String normalizeResultUrl(String raw, String baseUrl) {
-        String value = htmlDecode(raw == null ? "" : raw.trim());
+        String value = unescapeScriptString(htmlDecode(raw == null ? "" : raw.trim()));
         if (value.isEmpty()
                 || value.startsWith("#")
                 || value.startsWith("javascript:")
@@ -1172,12 +1171,30 @@ final class VideoSearchResolver {
         if (!normalizedQuery.isEmpty() && haystack.contains(normalizedQuery)) {
             score += 60;
         }
+        if (containsCjkKanaHangul(normalizedQuery)) {
+            score += cjkOverlapScore(haystack, normalizedQuery);
+        }
         for (String token : normalizedQuery.split("\\s+")) {
             if (token.length() >= 2 && haystack.contains(token)) {
                 score += 12;
             }
         }
         return score;
+    }
+
+    private static int cjkOverlapScore(String haystack, String query) {
+        int matched = 0;
+        Set<Character> seen = new LinkedHashSet<>();
+        for (int i = 0; i < query.length(); i++) {
+            char ch = query.charAt(i);
+            if (!isCjkKanaHangul(ch) || !seen.add(ch)) {
+                continue;
+            }
+            if (haystack.indexOf(ch) >= 0) {
+                matched++;
+            }
+        }
+        return matched <= 0 ? 0 : Math.min(48, matched * 12);
     }
 
     private static String normalizeSearchText(String value) {
@@ -1226,14 +1243,17 @@ final class VideoSearchResolver {
             return false;
         }
         for (int i = 0; i < text.length(); i++) {
-            char ch = text.charAt(i);
-            if ((ch >= 0x4E00 && ch <= 0x9FFF)
-                    || (ch >= 0x3040 && ch <= 0x30FF)
-                    || (ch >= 0xAC00 && ch <= 0xD7AF)) {
+            if (isCjkKanaHangul(text.charAt(i))) {
                 return true;
             }
         }
         return false;
+    }
+
+    private static boolean isCjkKanaHangul(char ch) {
+        return (ch >= 0x4E00 && ch <= 0x9FFF)
+                || (ch >= 0x3040 && ch <= 0x30FF)
+                || (ch >= 0xAC00 && ch <= 0xD7AF);
     }
 
     private static final class RankedResult {

@@ -63,6 +63,7 @@ public final class MainActivity extends Activity {
     private static final int ACCENT_DARK = Color.rgb(119, 63, 78);
     private static final int INDIGO = Color.rgb(62, 78, 113);
     private static final Pattern HTTP_URL = Pattern.compile("https?://[^\\s\"'<>]+", Pattern.CASE_INSENSITIVE);
+    private static final Pattern LOCAL_URI = Pattern.compile("(?:content|file)://[^\\s\"'<>]+", Pattern.CASE_INSENSITIVE);
     private static final Pattern HEADER_LINE = Pattern.compile("^\\s*([A-Za-z][A-Za-z0-9-]*)\\s*:\\s*(.+?)\\s*$", Pattern.CASE_INSENSITIVE);
     private static final Pattern CURL_HEADER = Pattern.compile("(?:^|\\s)(?:-H|--header)(?:\\s+|=)['\"]([A-Za-z][A-Za-z0-9-]*)\\s*:\\s*([^'\"]+)['\"]", Pattern.CASE_INSENSITIVE);
     private static final Pattern CURL_COOKIE = Pattern.compile("(?:^|\\s)(?:-b|--cookie)(?:\\s+|=)(?:'([^']*)'|\"([^\"]*)\"|(\\S+))", Pattern.CASE_INSENSITIVE);
@@ -578,7 +579,12 @@ public final class MainActivity extends Activity {
             return;
         }
         BrowserRequestContext requestContext = parseBrowserRequestContext(urlInput.getText().toString());
-        List<String> urls = requestContext.urls;
+        List<String> urls = new ArrayList<>(requestContext.urls);
+        for (String localUri : extractLocalUris(urlInput.getText().toString())) {
+            if (!urls.contains(localUri)) {
+                urls.add(localUri);
+            }
+        }
         if (urls.isEmpty()) {
             String query = urlInput.getText().toString().trim();
             if (!VideoSearchResolver.looksLikeSearchText(query)) {
@@ -599,7 +605,7 @@ public final class MainActivity extends Activity {
         StringBuilder queuedPreview = new StringBuilder();
         for (String rawUrl : urls) {
             Uri uri = Uri.parse(rawUrl);
-            String fileName = urls.size() == 1 ? FileNames.choose(uri, requestedName) : FileNames.choose(uri, "");
+            String fileName = queuedFileName(uri, urls.size() == 1 ? requestedName : "");
             if (queued == 0) {
                 firstName = fileName;
             }
@@ -620,6 +626,25 @@ public final class MainActivity extends Activity {
             statusText.setText(queuedPreview.toString());
         }
         refreshStatus();
+    }
+
+    private String queuedFileName(Uri uri, String requestedName) {
+        String clean = FileNames.sanitize(requestedName);
+        if (!clean.isEmpty()) {
+            return clean;
+        }
+        if (isLocalUri(uri)) {
+            clean = FileNames.sanitize(displayNameForUri(uri));
+            if (!clean.isEmpty()) {
+                return clean;
+            }
+        }
+        return FileNames.choose(uri, "");
+    }
+
+    private boolean isLocalUri(Uri uri) {
+        String scheme = uri == null ? "" : uri.getScheme();
+        return "content".equalsIgnoreCase(scheme) || "file".equalsIgnoreCase(scheme);
     }
 
     private void showSearchResults(String query, String fileName, boolean playAfterThreshold) {
@@ -1091,6 +1116,18 @@ public final class MainActivity extends Activity {
         return urls;
     }
 
+    private List<String> extractLocalUris(String text) {
+        List<String> urls = new ArrayList<>();
+        Matcher matcher = LOCAL_URI.matcher(text == null ? "" : text);
+        while (matcher.find()) {
+            String url = trimTrailingPunctuation(matcher.group());
+            if (!url.isEmpty() && !urls.contains(url)) {
+                urls.add(url);
+            }
+        }
+        return urls;
+    }
+
     private String trimTrailingPunctuation(String rawUrl) {
         String value = rawUrl == null ? "" : rawUrl.trim();
         while (value.endsWith(".")
@@ -1205,13 +1242,112 @@ public final class MainActivity extends Activity {
     }
 
     private void hydrateSharedText(Intent intent) {
-        if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) {
+        if (intent == null) {
+            return;
+        }
+        if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
+            Uri data = intent.getData();
+            persistIncomingUriPermission(intent, data);
+            urlInput.setText(data.toString());
+            fileNameInput.setText(queuedFileName(data, ""));
+            return;
+        }
+        List<Uri> streamUris = sharedStreamUris(intent);
+        if (!streamUris.isEmpty()) {
+            List<String> values = new ArrayList<>();
+            for (Uri uri : streamUris) {
+                persistIncomingUriPermission(intent, uri);
+                values.add(uri.toString());
+            }
+            urlInput.setText(joinLines(values));
+            if (streamUris.size() == 1) {
+                fileNameInput.setText(displayNameForUri(streamUris.get(0)));
+            }
+            return;
+        }
+        if (!Intent.ACTION_SEND.equals(intent.getAction())) {
             return;
         }
         CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
         if (text != null) {
             urlInput.setText(text.toString().trim());
         }
+    }
+
+    private List<Uri> sharedStreamUris(Intent intent) {
+        List<Uri> uris = new ArrayList<>();
+        String action = intent.getAction();
+        if (Intent.ACTION_SEND.equals(action)) {
+            Object stream = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (stream instanceof Uri) {
+                uris.add((Uri) stream);
+            }
+        } else if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+            ArrayList<Uri> streams = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+            if (streams != null) {
+                uris.addAll(streams);
+            }
+        }
+        ClipData clipData = intent.getClipData();
+        if (clipData != null) {
+            for (int i = 0; i < clipData.getItemCount(); i++) {
+                Uri uri = clipData.getItemAt(i).getUri();
+                if (uri != null && !uris.contains(uri)) {
+                    uris.add(uri);
+                }
+            }
+        }
+        return uris;
+    }
+
+    private void persistIncomingUriPermission(Intent intent, Uri uri) {
+        if (intent == null || uri == null || !"content".equalsIgnoreCase(uri.getScheme())) {
+            return;
+        }
+        int flags = intent.getFlags();
+        if ((flags & Intent.FLAG_GRANT_READ_URI_PERMISSION) == 0
+                || (flags & Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) == 0) {
+            return;
+        }
+        try {
+            getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (SecurityException | IllegalArgumentException ignored) {
+            // Many chat app providers grant only transient access. The service still receives ClipData permission.
+        }
+    }
+
+    private String displayNameForUri(Uri uri) {
+        if (uri == null) {
+            return "";
+        }
+        if ("file".equalsIgnoreCase(uri.getScheme())) {
+            String path = uri.getPath();
+            return path == null ? "" : new File(path).getName();
+        }
+        try (Cursor cursor = getContentResolver().query(uri, new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                String name = cursor.getString(0);
+                return name == null ? "" : name;
+            }
+        } catch (Exception ignored) {
+            // Fall through to path fallback.
+        }
+        String fallback = uri.getLastPathSegment();
+        return fallback == null ? "" : fallback;
+    }
+
+    private String joinLines(List<String> values) {
+        StringBuilder builder = new StringBuilder();
+        for (String value : values) {
+            if (value == null || value.trim().isEmpty()) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append('\n');
+            }
+            builder.append(value.trim());
+        }
+        return builder.toString();
     }
 
     private String formatBytes(long bytes) {

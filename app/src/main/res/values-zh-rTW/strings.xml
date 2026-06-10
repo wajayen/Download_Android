@@ -78,6 +78,7 @@
     <string name="source_detail_with_referer_format">網址：%1$s\n來源頁：%2$s</string>
     <string name="task_message_queued">已排入佇列</string>
     <string name="task_message_recovered">服務重啟後已恢復佇列</string>
+    <string name="task_message_shared_file_reopen_required">分享檔案存取權已失效，請重新分享檔案</string>
     <string name="task_message_running">下載中</string>
     <string name="task_message_playback_started">已開始播放，下載會繼續</string>
     <string name="task_message_done">已完成</string>
@@ -153,6 +154,7 @@
     <string name="engine_http_content_type_validated">已驗證 HTTP 媒體內容類型</string>
     <string name="engine_http_size_validated">已驗證 HTTP 下載大小</string>
     <string name="engine_http_resume_invalid_restarting">HTTP 續傳已失效，重新下載</string>
+    <string name="engine_importing_shared_file">正在匯入分享檔案</string>
     <string name="action_set_download_directory">設定下載目錄</string>
     <string name="toast_download_directory_set">已設定下載目錄</string>
     <string name="toast_download_directory_picker_failed">無法開啟資料夾選擇器</string>

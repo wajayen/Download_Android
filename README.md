@@ -2,7 +2,7 @@
 
 `Download_Android` 是 Windows 版「下載者」的 Android 原生移植專案。目標是在手機上提供接近桌面版的影片搜尋、解析、下載、續傳、播放與診斷能力，同時維持 Android 友善的操作方式。
 
-目前 Android 版本：`0.240.0`（`versionCode 240`）。
+目前 Android 版本：`0.250.0`（`versionCode 250`）。
 
 ## App 特色
 
@@ -105,6 +105,16 @@
 - v0.238.0: HLS 與 DASH 續傳 checkpoint 判定失效時，會同步清除舊 `.part` 檔與 checkpoint，避免舊片段殘留干擾重新下載或造成診斷狀態混亂。
 - v0.239.0: DASH 續傳 checkpoint 增加 init URL/range 與首尾 segment 指紋比對，避免同一 manifest URL 回傳不同 representation 或片段內容時錯接舊 `.part` 檔。
 - v0.240.0: HLS 續傳 checkpoint 增加首尾 segment、byte-range、init map 與 key/IV 指紋比對，避免同一 manifest URL 回傳不同片段內容時錯接舊 `.part` 檔。
+- v0.241.0: HTTP、HLS、DASH 完成輸出與 HLS remux MP4 會避開已存在檔名，改用 `name (2).ext` 類型的新檔名，避免重複下載或重試完成時覆蓋既有檔案。
+- v0.242.0: 搜尋流程不再於少量直接站內結果時過早停止，會繼續用搜尋引擎補足候選；CJK 關鍵字加入字元重疊評分，縮圖抽取也支援更多 lazy image、preview、JSON 圖片欄位與 escaped URL。
+- v0.243.0: 支援 Telegram、LINE 等 app 分享檔案到下載者；Android 會接收 `ACTION_SEND` / `ACTION_SEND_MULTIPLE` 的 `content://` 或 `file://` 檔案 URI，並匯入到既有下載隊列與下載目錄流程。
+- v0.244.0: 支援 Discord 檔案下載入口；下載者可接收 Discord CDN/media attachment 網域的 `ACTION_VIEW` 連結，並把 `cdn.discordapp.com`、`media.discordapp.net` 等附件 URL 帶入既有下載流程。
+- v0.245.0: 多檔分享匯入時，`content://` / `file://` 檔名會優先讀取 Android provider 的 `DISPLAY_NAME`，避免 Telegram、LINE、Discord 多檔分享輸出成 provider path 或無意義檔名。
+- v0.246.0: 分享檔案匯入時，Service 啟動 intent 會附帶本機檔案 URI 的 data/ClipData 與讀取授權，降低 Telegram、LINE、Discord 等來源的 `content://` 權限在背景匯入時失效的機率。
+- v0.247.0: 服務重啟恢復任務時，若中斷的是 `content://` 分享檔案匯入，會改標示為需要重新分享檔案，不再像 HTTP/HLS/DASH 一樣自動重排，避免來源授權失效後反覆失敗。
+- v0.248.0: 手動重試失敗任務時會跳過已失效的 `content://` 分享檔案任務，避免 Telegram、LINE、Discord 等來源授權過期後又被重新排入並再次失敗；這類檔案需由來源 App 重新分享。
+- v0.249.0: 新增一般檔案 `ACTION_VIEW` 開啟入口，支援檔案管理器、Telegram、LINE、Discord 等 App 以「開啟方式」傳入 `content://` / `file://` 檔案，並以 provider 實際檔名預填下載檔名。
+- v0.250.0: 接收 `content://` 分享或開啟檔案時，若來源提供可持久化讀取授權，Android 會立即保存該 URI 權限，降低背景匯入或服務重啟後來源檔案失效的機率；不支援持久化的聊天 App 仍維持既有 ClipData 短期授權流程。
 - v0.217.0: 修正搜尋結果下載只嘗試單一 URL 的問題；現在使用者選中的結果會成為第一優先，但任務仍保留搜尋流程，若該來源解析或下載失敗會自動嘗試同批搜尋候選，下載隊列也會顯示簡短失敗原因便於診斷。
 - v0.216.0: 系統下載通知現在會把檔名放在通知內容中，並在 HTTP/HLS/DASH 回報進度時同步更新通知標題與原生進度條，搜尋解析階段則維持明確的準備/解析狀態。
 - v0.215.0: 下載隊列不再用 0% 顯示尚未開始、解析準備、失敗或取消的任務；剛排入顯示「佇列中」，解析中顯示「準備中」，實際下載開始後才顯示百分比或已下載容量。

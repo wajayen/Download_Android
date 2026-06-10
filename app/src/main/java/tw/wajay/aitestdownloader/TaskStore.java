@@ -59,24 +59,39 @@ final class TaskStore {
     synchronized int recoverInterruptedTasks() {
         JSONArray tasks = loadTasks();
         int recovered = 0;
+        boolean changed = false;
         for (int i = 0; i < tasks.length(); i++) {
             JSONObject task = tasks.optJSONObject(i);
             if (task == null || !STATUS_RUNNING.equals(task.optString("status"))) {
                 continue;
             }
             try {
-                task.put("status", STATUS_QUEUED);
-                task.put("message", text(R.string.task_message_recovered));
+                if (isContentUriTask(task)) {
+                    String message = text(R.string.task_message_shared_file_reopen_required);
+                    task.put("status", STATUS_FAILED);
+                    task.put("message", message);
+                    task.put("error", message);
+                    task.put("requiresReshare", true);
+                } else {
+                    task.put("status", STATUS_QUEUED);
+                    task.put("message", text(R.string.task_message_recovered));
+                    recovered++;
+                }
                 task.put("updatedAt", System.currentTimeMillis());
-                recovered++;
+                changed = true;
             } catch (JSONException error) {
                 throw new IllegalStateException(error);
             }
         }
-        if (recovered > 0) {
+        if (changed) {
             saveTasks(tasks);
         }
         return recovered;
+    }
+
+    private boolean isContentUriTask(JSONObject task) {
+        String url = task == null ? "" : task.optString("url", "");
+        return "content".equalsIgnoreCase(Uri.parse(url == null ? "" : url).getScheme());
     }
 
     synchronized JSONObject enqueue(String url, String fileName) {
@@ -242,6 +257,9 @@ final class TaskStore {
             if (!STATUS_FAILED.equals(status) && !STATUS_CANCELLED.equals(status)) {
                 continue;
             }
+            if (STATUS_FAILED.equals(status) && requiresReshare(task)) {
+                continue;
+            }
             try {
                 task.put("status", STATUS_QUEUED);
                 task.put("message", text(R.string.task_message_retry));
@@ -250,6 +268,7 @@ final class TaskStore {
                 task.put("total", -1L);
                 task.put("output", "");
                 task.put("error", "");
+                task.remove("requiresReshare");
                 task.remove("failedCandidateUrls");
                 task.put("playbackStarted", false);
                 task.put("updatedAt", System.currentTimeMillis());
@@ -260,6 +279,10 @@ final class TaskStore {
             return task;
         }
         return null;
+    }
+
+    private boolean requiresReshare(JSONObject task) {
+        return task != null && (task.optBoolean("requiresReshare", false) || isContentUriTask(task));
     }
 
     synchronized JSONObject retryNextCandidate() {

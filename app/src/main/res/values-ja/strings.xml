@@ -78,6 +78,7 @@
     <string name="source_detail_with_referer_format">URL：%1$s\nReferer：%2$s</string>
     <string name="task_message_queued">待機中</string>
     <string name="task_message_recovered">サービス再起動後にキューへ戻しました</string>
+    <string name="task_message_shared_file_reopen_required">共有ファイルへのアクセス権が失効しました。もう一度共有してください</string>
     <string name="task_message_running">ダウンロード中</string>
     <string name="task_message_playback_started">再生を開始しました。ダウンロードは継続します</string>
     <string name="task_message_done">完了</string>
@@ -153,6 +154,7 @@
     <string name="engine_http_content_type_validated">HTTP メディア Content-Type を検証しました</string>
     <string name="engine_http_size_validated">HTTP ダウンロードサイズを検証しました</string>
     <string name="engine_http_resume_invalid_restarting">HTTP 再開が失効しました。最初から再開します</string>
+    <string name="engine_importing_shared_file">共有ファイルを取り込んでいます</string>
     <string name="action_set_download_directory">ダウンロード先を設定</string>
     <string name="toast_download_directory_set">ダウンロード先を設定しました</string>
     <string name="toast_download_directory_picker_failed">フォルダー選択を開けませんでした</string>

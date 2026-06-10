@@ -82,6 +82,7 @@
     <string name="source_detail_with_referer_format">URL: %1$s\nReferer: %2$s</string>
     <string name="task_message_queued">Queued</string>
     <string name="task_message_recovered">Recovered after service restart</string>
+    <string name="task_message_shared_file_reopen_required">Shared file access expired; please share the file again</string>
     <string name="task_message_running">Downloading</string>
     <string name="task_message_playback_started">Playback started; download continues</string>
     <string name="task_message_done">Done</string>
@@ -153,6 +154,7 @@
     <string name="engine_http_content_type_validated">Validated HTTP media content type</string>
     <string name="engine_http_size_validated">Validated HTTP download size</string>
     <string name="engine_http_resume_invalid_restarting">HTTP resume expired; restarting download</string>
+    <string name="engine_importing_shared_file">Importing shared file</string>
     <string name="action_set_download_directory">Set Download Directory</string>
     <string name="toast_download_directory_set">Download directory set</string>
     <string name="toast_download_directory_picker_failed">Could not open folder picker</string>

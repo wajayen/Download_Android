@@ -1,11 +1,13 @@
 package tw.wajay.aitestdownloader;
 
 import android.content.Context;
+import android.database.Cursor;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Environment;
+import android.provider.OpenableColumns;
 import android.util.Base64;
 
 import java.io.BufferedInputStream;
@@ -702,6 +704,10 @@ final class DownloadEngine {
                     return;
                 }
                 Uri uri = Uri.parse(rawUrl);
+                if (isLocalFileUri(uri)) {
+                    downloadLocalUri(uri, requestedName, callback);
+                    return;
+                }
                 String fileName = FileNames.choose(uri, requestedName);
                 String targetUrl = rawUrl;
                 String sourceSite = MediaResolver.sourceSite(rawUrl);
@@ -722,6 +728,88 @@ final class DownloadEngine {
                 callback.onError(error);
             }
         });
+    }
+
+    private boolean isLocalFileUri(Uri uri) {
+        String scheme = uri == null ? "" : uri.getScheme();
+        return "content".equalsIgnoreCase(scheme) || "file".equalsIgnoreCase(scheme);
+    }
+
+    private void downloadLocalUri(Uri uri, String requestedName, Callback callback) throws IOException {
+        String fileName = FileNames.sanitize(requestedName);
+        if (fileName.isEmpty()) {
+            fileName = FileNames.sanitize(displayNameForLocalUri(uri));
+        }
+        if (fileName.isEmpty()) {
+            fileName = FileNames.choose(uri, "shared-file.bin");
+        }
+        File output = uniqueFinalOutputFile(outputFile(fileName));
+        File part = new File(output.getParentFile(), output.getName() + ".part");
+        if (part.exists() && !part.delete()) {
+            throw new IOException("Could not clear stale partial file: " + part.getName());
+        }
+        long total = sizeForLocalUri(uri);
+        callback.onStatus(context.getString(R.string.engine_importing_shared_file));
+        try (InputStream input = openLocalUri(uri);
+             FileOutputStream fos = new FileOutputStream(part, false);
+             BufferedOutputStream outputStream = new BufferedOutputStream(fos)) {
+            if (input == null) {
+                throw new IOException("Could not open shared file");
+            }
+            copy(input, outputStream, 0L, total, callback::onProgress);
+        }
+        if (cancelled.get()) {
+            callback.onStatus(context.getString(R.string.engine_cancelled_keep_partial));
+            return;
+        }
+        replace(part, output);
+        validateCompletedMedia(output, callback);
+        callback.onDone(output);
+    }
+
+    private InputStream openLocalUri(Uri uri) throws IOException {
+        if ("file".equalsIgnoreCase(uri.getScheme())) {
+            return new FileInputStream(new File(uri.getPath() == null ? "" : uri.getPath()));
+        }
+        return context.getContentResolver().openInputStream(uri);
+    }
+
+    private String displayNameForLocalUri(Uri uri) {
+        if (uri == null) {
+            return "";
+        }
+        if ("file".equalsIgnoreCase(uri.getScheme())) {
+            String path = uri.getPath();
+            return path == null ? "" : new File(path).getName();
+        }
+        try (Cursor cursor = context.getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                String name = cursor.getString(0);
+                return name == null ? "" : name;
+            }
+        } catch (Exception ignored) {
+            // Fall through to path-based fallback.
+        }
+        String fallback = uri.getLastPathSegment();
+        return fallback == null ? "" : fallback;
+    }
+
+    private long sizeForLocalUri(Uri uri) {
+        if (uri == null) {
+            return -1L;
+        }
+        if ("file".equalsIgnoreCase(uri.getScheme())) {
+            File file = new File(uri.getPath() == null ? "" : uri.getPath());
+            return file.isFile() ? file.length() : -1L;
+        }
+        try (Cursor cursor = context.getContentResolver().query(uri, new String[]{OpenableColumns.SIZE}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                return cursor.isNull(0) ? -1L : cursor.getLong(0);
+            }
+        } catch (Exception ignored) {
+            // Unknown provider size; progress will fall back to copied bytes.
+        }
+        return -1L;
     }
 
     private void downloadSearchResult(String rawUrl, String requestedName, Callback callback) throws IOException {
@@ -4647,6 +4735,8 @@ final class DownloadEngine {
         String headerName = FileNames.fromContentDisposition(contentDisposition);
         if (!headerName.isEmpty()) {
             output = uniqueOutputFile(headerName);
+        } else {
+            output = uniqueFinalOutputFile(output);
         }
         replace(part, output);
         if (state.exists()) {
@@ -4725,6 +4815,7 @@ final class DownloadEngine {
             }
         }
 
+        output = uniqueFinalOutputFile(output);
         replace(part, output);
         if (checkpoint.exists()) {
             checkpoint.delete();
@@ -4752,6 +4843,7 @@ final class DownloadEngine {
         if (!downloadDashTrack(plan, part, checkpoint, refererUrl, callback, true, R.string.engine_downloading_dash_segment)) {
             return;
         }
+        output = uniqueFinalOutputFile(output);
         replace(part, output);
         if (checkpoint.exists()) {
             checkpoint.delete();
@@ -4897,7 +4989,7 @@ final class DownloadEngine {
     }
 
     private File remuxHlsOutput(File transportOutput, String requestedFileName, Callback callback) {
-        File mp4Output = outputFile(FileNames.replaceExtension(requestedFileName, ".mp4"));
+        File mp4Output = uniqueFinalOutputFile(outputFile(FileNames.replaceExtension(requestedFileName, ".mp4")));
         if (transportOutput.equals(mp4Output)) {
             return transportOutput;
         }
@@ -6370,6 +6462,13 @@ final class DownloadEngine {
             }
         }
         return new File(directory, stem + " (" + System.currentTimeMillis() + ")" + extension);
+    }
+
+    private File uniqueFinalOutputFile(File target) {
+        if (target == null || !target.exists()) {
+            return target;
+        }
+        return uniqueOutputFile(target.getName());
     }
 
     private void replace(File part, File output) throws IOException {

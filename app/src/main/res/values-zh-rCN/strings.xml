@@ -78,6 +78,7 @@
     <string name="source_detail_with_referer_format">地址：%1$s\n来源页：%2$s</string>
     <string name="task_message_queued">已排入队列</string>
     <string name="task_message_recovered">服务重启后已恢复队列</string>
+    <string name="task_message_shared_file_reopen_required">分享文件访问权限已失效，请重新分享文件</string>
     <string name="task_message_running">下载中</string>
     <string name="task_message_playback_started">已开始播放，下载会继续</string>
     <string name="task_message_done">已完成</string>
@@ -153,6 +154,7 @@
     <string name="engine_http_content_type_validated">已验证 HTTP 媒体内容类型</string>
     <string name="engine_http_size_validated">已验证 HTTP 下载大小</string>
     <string name="engine_http_resume_invalid_restarting">HTTP 续传已失效，重新下载</string>
+    <string name="engine_importing_shared_file">正在导入分享文件</string>
     <string name="action_set_download_directory">设置下载目录</string>
     <string name="toast_download_directory_set">已设置下载目录</string>
     <string name="toast_download_directory_picker_failed">无法打开文件夹选择器</string>
